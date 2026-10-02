@@ -1,250 +1,118 @@
-[HASS Community Forum Thread](https://community.home-assistant.io/t/stremio-integration-for-apple-tv/976514)
-# Stremio Home Assistant Integration
+# Stremio Cinema for Home Assistant
 
-[![HACS Badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
-[![GitHub Release](https://img.shields.io/github/release/tamaygz/hacs-stremio.svg?style=for-the-badge)](https://github.com/tamaygz/hacs-stremio/releases)
-[![License](https://img.shields.io/github/license/tamaygz/hacs-stremio.svg?style=for-the-badge)](LICENSE)
-[![Tests](https://img.shields.io/github/actions/workflow/status/tamaygz/hacs-stremio/test.yml?style=for-the-badge&label=Tests)](https://github.com/tamaygz/hacs-stremio/actions)
+[![HACS Custom](https://img.shields.io/badge/HACS-custom-41BDF5)](https://www.hacs.xyz/docs/faq/custom_repositories/)
+[![Version](https://img.shields.io/badge/version-0.6.0-9b6aff)](CHANGELOG.md)
+[![Home Assistant](https://img.shields.io/badge/Home_Assistant-custom_integration-18BCF2)](https://www.home-assistant.io/)
 
-A comprehensive Home Assistant Custom Component (HACS) integration that connects to the Stremio API to track your library, viewing activity, and media consumption.
+**Browse. Discover. Organize. Pick up where you left off.**
 
-> **🍎 Built for Apple TV** — This integration was created primarily to bring easy Stremio playback to Apple TV using the VLC app. Stream your favorite content directly to your Apple TV with seamless AirPlay handover!
+A Home Assistant custom integration with a Cinema dashboard for your Stremio library, public movie and series catalogs, recommendations, stream selection, and episode-aware watch management. This community fork builds on [tamaygz/hacs-stremio](https://github.com/tamaygz/hacs-stremio).
 
-<p align="center">
-  <img src="https://www.stremio.com/website/stremio-logo-small.png" alt="Stremio Logo" width="150">
-</p>
+The Cinema example enables **management mode**: inspect streams and copy links, manage library membership and watch status, and explore title information. Existing playback cards, media-source browsing, and optional Apple TV handover remain available outside management mode. This is an integration installed under `custom_components/stremio`, rather than a Home Assistant app/add-on.
 
----
+[Install](#installation) · [Build the dashboard](#your-cinema-dashboard) · [Cards](docs/ui.md) · [Actions](docs/services.md) · [Watch management](docs/watch-management.md) · [Validation](docs/validation.md)
 
-## ✨ Features
+## What you can do
 
-| Feature                    | Description                                     |
-| -------------------------- | ----------------------------------------------- |
-| 🎬 **Media Player Entity** | Track current playback with rich metadata       |
-| 📊 **Multiple Sensors**    | Library stats, watch time, current media        |
-| 🔔 **Events**              | React to playback changes and library updates   |
-| 📺 **Apple TV Handover**   | Stream content directly to Apple TV via AirPlay |
-| 🎨 **Custom UI Cards**     | Beautiful Lovelace cards for library browsing   |
-| 🔍 **Media Source**        | Browse library from HA media browser            |
-| 🎯 **Services**            | Search, manage library, get stream URLs         |
-| 🎭 **Catalog Browsing**    | Browse popular movies, TV shows, and by genre   |
-| ⚙️ **Stream Preferences**  | Configure addon order & quality preferences     |
+| Capability | What it does |
+| --- | --- |
+| Library | Search, filter movies/series, sort, inspect details, add and remove titles while preserving history. |
+| Continue Watching | Show titles with resume progress, episode information, progress bars, and optional carousel layout. Clear resume progress separately from watched status. |
+| Discovery | Browse Popular or current-year New movies and series, filter genres, search the public catalog, and load further results. |
+| IMDb sorting | Show score badges and sort **loaded results** numerically, ascending or descending; unrated titles remain last. Restore provider order anytime. |
+| Recommendations | Explore suggestions based on library preferences and use Find Similar from a title's details. |
+| Title Info | Open a native popup with public Cinemeta synopsis, cast, director, genres, year, runtime, and score. No Browser Mod required. |
+| Watch management | Mark a movie or a selected series episode watched/unwatched. Episode changes preserve other episodes and unrelated resume progress. |
+| Series | Pick seasons and episodes, inspect available streams, and request upcoming episode information. |
+| Streams | List sources from your Stremio add-ons and copy a selected URL. Configurable add-on ordering and quality preferences are inherited. |
+| Playback | Existing player/detail cards, media browser, and optional Apple TV handover remain; external-device compatibility depends on device/app/protocol. |
+| Home Assistant | Media player, library/current/last-watched/stream/resume sensors, binary sensors, refresh buttons, and playback/library events for automations. |
 
----
+New means Cinemeta's **current UTC-year feed**, which can include upcoming releases. It does not mean recently added to your library or new episodes. Load More consumes native provider pages and adds smaller display batches; a sparse filtered page can need another click. IMDb sorting is not a ranking of the entire remote catalog.
 
-## 📦 Quick Start
+## Screenshots
 
-### Installation via HACS
+The [visual guide](docs/screenshots/README.md) records the capture plan. Updated live screenshots will be added after this release is installed and checked in Home Assistant. Captures will show the Stremio cards and dialogs, excluding the Home Assistant sidebar and top bar. Private library, history, counts, device names, and entity IDs will be removed or replaced with explicitly labeled demonstration data before publication.
 
-1. Open HACS → Integrations
-2. Click ⋮ → Custom repositories
-3. Add: `https://github.com/tamaygz/hacs-stremio` (Category: Integration)
-4. Search "Stremio" → Install → Restart HA
+## Installation
 
-### Configuration
+1. In HACS, open the three-dot menu → **Custom repositories**.
+2. Add `https://github.com/jjohnreese/hacs-stremio`, category **Integration**.
+3. Download **Stremio Cinema**, then restart Home Assistant.
+4. Open **Settings → Devices & services → Add integration**, search **Stremio Cinema** (the domain remains `stremio`), and follow the Stremio sign-in flow.
+5. Hard-refresh your browser after updating; embedded cards are registered automatically for storage-mode dashboards.
 
-1. Go to **Settings** → **Devices & Services** → **+ Add Integration**
-2. Search **"Stremio"** → Enter credentials → Done!
+Manual installation: copy only `custom_components/stremio` into your Home Assistant configuration's `custom_components` directory, then restart. Never copy test fixtures, handoff notes, development config, or documentation into the component directory.
 
-📖 [Full Setup Guide](docs/setup.md)
+**Migrating from upstream:** back up your Home Assistant configuration, replace the existing Stremio component through HACS/manual installation, restart, and keep your existing Stremio config entry. The fork and upstream use the same domain and cannot be installed side by side. Existing entity names depend on your account and entity registry; this fork does not rename your stored entities.
 
----
+See [HACS custom repository instructions](https://www.hacs.xyz/docs/faq/custom_repositories/) and [the setup guide](docs/setup.md). Credentials and Stremio session keys belong in the integration configuration, never dashboard YAML or GitHub.
 
-## 🎯 Entities Created
+## Your Cinema dashboard
 
-### Sensors
+The [complete, copyable dashboard](examples/stremio-cinema-dashboard.yaml) includes the hero, statistics, Continue Watching, recommendations, movie/series discovery, library, and refresh footer, with responsive desktop/mobile layouts.
 
-| Entity                                   | Description             |
-| ---------------------------------------- | ----------------------- |
-| `sensor.stremio_current_media`           | Currently playing media |
-| `sensor.stremio_last_watched`            | Last watched content    |
-| `sensor.stremio_library_count`           | Total library items     |
-| `sensor.stremio_continue_watching_count` | In-progress items       |
+1. Install **Button Card**, **Layout Card**, and **Card Mod** from HACS. The Stremio cards ship with this integration.
+2. Find your actual Stremio entities under **Settings → Devices & services → Stremio Cinema → Entities**.
+3. Replace **every occurrence** of these five example entities in the YAML:
 
-### Binary Sensors
+| Example | Replace with |
+| --- | --- |
+| `media_player.stremio_account_stremio` | Your Stremio media player |
+| `sensor.stremio_account_library_count` | Your Library Count sensor |
+| `sensor.stremio_account_continue_watching_count` | Your Continue Watching Count sensor |
+| `binary_sensor.stremio_account_has_new_episodes` | Your Has New Episodes binary sensor |
+| `button.stremio_account_force_refresh` | Your Force Refresh button |
 
-| Entity                                      | Description                                |
-| ------------------------------------------- | ------------------------------------------ |
-| `binary_sensor.stremio_is_watching`         | On when media is currently being watched   |
-| `binary_sensor.stremio_has_continue_watching` | On when there are items to continue watching |
-| `binary_sensor.stremio_has_new_episodes`    | On when any series has unwatched episodes  |
+4. Create an empty dashboard under **Settings → Dashboards**, open its **Raw configuration editor**, and paste the full `views:` example. For an existing dashboard, append just the supplied view under its existing `views:` list and retain its other views.
+5. Save, refresh, and open **Stremio Cinema**. For multiple accounts, set `config_entry_id` on each management card and ensure its `entity`/`library_entity` refer to the same account.
 
-### Media Player
+[Detailed dashboard setup, minimal cards, resource configuration, and troubleshooting](docs/dashboard.md)
 
-| Entity                 | Description                      |
-| ---------------------- | -------------------------------- |
-| `media_player.stremio` | Playback state, metadata, poster |
+## Copyable action examples
 
-### Media Source
-
-Browse your entire Stremio library through Home Assistant's media browser:
-
-<a href="docs/screenshots/media_browser_support.png">
-  <img src="docs/screenshots/media_browser_support.png" alt="Media Browser Support" width="400" />
-</a>
-
----
-
-## 🛠️ Services
+Public IMDb IDs below are examples. Replace the config-entry placeholder with your own Stremio integration entry ID; it is not an entity ID or authentication key.
 
 ```yaml
-# Get stream URLs for a movie
-service: stremio.get_stream_url
+# Mark a movie watched; add it to your library first.
+action: stremio.mark_watched
 data:
-  media_id: "tt0111161"
-  media_type: "movie"
+  config_entry_id: REPLACE_WITH_STREMIO_CONFIG_ENTRY_ID
+  media_id: tt1375666
+  media_type: movie
+```
 
-# Search your library
-service: stremio.search_library
+```yaml
+# Mark only Breaking Bad season 1, episode 1 as unwatched.
+action: stremio.mark_unwatched
 data:
-  query: "Breaking Bad"
-
-# Stream to Apple TV
-service: stremio.handover_to_apple_tv
-data:
-  media_id: "tt0111161"
-  device_name: "Living Room Apple TV"
-  method: "airplay"
+  config_entry_id: REPLACE_WITH_STREMIO_CONFIG_ENTRY_ID
+  media_id: tt0903747
+  media_type: series
+  season: 1
+  episode: 1
 ```
-
-📖 [Full Services Documentation](docs/services.md)
-
----
-
-## 🎨 Custom Lovelace Cards
-
-Cards are **auto-registered** - no manual setup needed!
-
-### My Library Card
-
-Browse and manage your Stremio library directly in Home Assistant.
 
 ```yaml
-type: custom:stremio-library-card
-title: My Library
+# A script sequence requesting public title information.
+sequence:
+  - action: stremio.get_title_metadata
+    data:
+      media_id: tt1375666
+      media_type: movie
+    response_variable: title_info
 ```
 
-<a href="docs/screenshots/card_my_library.png">
-  <img src="docs/screenshots/card_my_library.png" alt="My Library Card" width="450" />
-</a>
+See [all 17 actions and their response behavior](docs/services.md), [watch-state semantics](docs/watch-management.md), and [automation examples](examples/README.md).
 
-### Continue Watching Card
+## Support and development
 
-Keep track of shows and movies you're currently watching.
+[Report a fork issue](https://github.com/jjohnreese/hacs-stremio/issues) with the integration version, relevant card configuration using fictional entities, and redacted logs. Never attach session keys, private add-on URLs, or a raw dashboard export.
 
-```yaml
-type: custom:stremio-continue-watching-card
-```
+Read [validation and known limitations](docs/validation.md) before relying on a feature. Backend account mutations require live verification on a consenting test account; offline regressions do not establish device compatibility. Public metadata is supplied by Cinemeta and may omit fields.
 
-<a href="docs/screenshots/card_continue_watching.png">
-  <img src="docs/screenshots/card_continue_watching.png" alt="Continue Watching Card" width="450" />
-</a>
+## Credits and licensing
 
-### Browse Catalog Card
+Thank you to **[@tamaygz](https://github.com/tamaygz)** for the original integration, frontend cards, media-source support, and Apple TV work; to [AboveColin/stremio-ha](https://github.com/AboveColin/stremio-ha) for the upstream inspiration; and to Home Assistant, HACS, Stremio, and Cinemeta contributors.
 
-Explore popular and recommended content from various catalogs.
-
-```yaml
-type: custom:stremio-browse-catalog-card
-```
-
-<a href="docs/screenshots/card_browse_catalog.png">
-  <img src="docs/screenshots/card_browse_catalog.png" alt="Browse Catalog Card" width="450" />
-</a>
-
-### Recommended Media Card
-
-Get personalized media recommendations.
-
-```yaml
-type: custom:stremio-recommended-media-card
-```
-
-<a href="docs/screenshots/card_recommended_media.png">
-  <img src="docs/screenshots/card_recommended_media.png" alt="Recommended Media Card" width="450" />
-</a>
-
-📖 [UI Cards Guide](docs/ui.md)
-
----
-
-## 🚀 Automation Examples
-
-```yaml
-# Dim lights when watching
-automation:
-  - alias: "Cinema Mode"
-    trigger:
-      - platform: state
-        entity_id: binary_sensor.stremio_is_playing
-        to: "on"
-    action:
-      - service: light.turn_on
-        target:
-          entity_id: light.living_room
-        data:
-          brightness_pct: 10
-```
-
-📖 [More Examples](examples/)
-
----
-
-## 📖 Documentation
-
-| Guide                                      | Description                    |
-| ------------------------------------------ | ------------------------------ |
-| [Setup Guide](docs/setup.md)               | Installation & configuration   |
-| [Configuration](docs/configuration.md)     | All options explained          |
-| [Services](docs/services.md)               | Service calls & automation     |
-| [Events](docs/events.md)                   | Event triggers for automations |
-| [UI Cards](docs/ui.md)                     | Custom Lovelace cards          |
-| [API Reference](docs/api.md)               | Developer documentation        |
-| [Development](docs/development.md)         | Contributing guide             |
-| [Troubleshooting](docs/troubleshooting.md) | Common issues                  |
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! See [Development Guide](docs/development.md).
-
-```bash
-# Setup development environment
-git clone https://github.com/tamaygz/hacs-stremio.git
-cd hacs-stremio
-pip install -r requirements_dev.txt
-
-# Run tests
-pytest tests/
-
-# Run linters
-black custom_components/stremio
-flake8 custom_components/stremio
-```
-
----
-
-## 📝 License
-
-MIT License - see [LICENSE](LICENSE) file.
-
-## 🙏 Credits
-
-- Native Stremio API integration using aiohttp
-- Inspired by [@AboveColin's stremio-ha](https://github.com/AboveColin/stremio-ha)
-
-## 💬 Support
-
-- 🐛 [Report Issues](https://github.com/tamaygz/hacs-stremio/issues)
-- 💬 [Discussions](https://github.com/tamaygz/hacs-stremio/discussions)
-
----
-
-<p align="center">
-  <b>⚠️ Not affiliated with Stremio. Use at your own risk.</b>
-</p>
-
-<p align="center">
-  <b>Version 1.0.0</b> | <a href="CHANGELOG.md">Changelog</a>
-</p>
+This fork is maintained at **jjohnreese/hacs-stremio**. It is a community project, with no official endorsement from Home Assistant, HACS, or Stremio. The inherited README declares MIT licensing, but the imported upstream snapshot has no `LICENSE` file; [licensing provenance](docs/credits.md) records that accurately without inventing a missing upstream copyright notice.

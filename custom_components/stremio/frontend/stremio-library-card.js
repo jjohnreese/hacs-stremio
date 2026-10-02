@@ -1,11 +1,13 @@
 /**
  * Stremio Library Card
- * 
+ *
  * Browse and search your Stremio library with filtering and sorting.
- * 
+ *
  * @customElement stremio-library-card
  * @extends LitElement
  */
+
+import { renderManagementActions } from './stremio-management.js?v=0.6.0';
 
 // Safe LitElement access - wait for HA frontend to be ready
 const loadCardHelpers = async () => {
@@ -16,7 +18,7 @@ const loadCardHelpers = async () => {
       css: Object.getPrototypeOf(customElements.get("ha-panel-lovelace")).prototype.css,
     };
   }
-  
+
   await customElements.whenDefined("ha-panel-lovelace");
   const Lit = Object.getPrototypeOf(customElements.get("ha-panel-lovelace"));
   return { LitElement: Lit, html: Lit.prototype.html, css: Lit.prototype.css };
@@ -42,6 +44,8 @@ class StremioLibraryCard extends LitElement {
 
   static get styles() {
     return css`
+      :host { min-width: 0; max-width: 100%; }
+
       :host {
         display: block;
         height: 100%;
@@ -108,6 +112,10 @@ class StremioLibraryCard extends LitElement {
 
       .library-grid {
         display: grid;
+        max-height: var(--card-max-height, none);
+        align-content: start;
+        align-items: start;
+        grid-auto-rows: max-content;
         grid-template-columns: repeat(var(--grid-columns, 4), 1fr);
         gap: 12px;
         padding: 16px;
@@ -410,6 +418,26 @@ class StremioLibraryCard extends LitElement {
         font-size: 0.95em;
         margin: 4px 0;
       }
+
+      /* Phone layouts keep posters readable even with six desktop columns. */
+      @media (max-width: 600px) {
+        button { min-height: 44px; min-width: 44px; }
+        select, input { min-height: 44px; box-sizing: border-box; }
+        .library-grid:not(.horizontal) {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          padding: 12px;
+        }
+        .library-grid.horizontal .library-item {
+          width: calc((100% - 12px) / 2);
+          min-width: 130px;
+        }
+        .detail-actions { flex-wrap: wrap; }
+        .detail-button { min-height: 44px; }
+        .item-title { font-size: 13px; line-height: 1.35; white-space: normal;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          height: auto; min-height: 2.7em; overflow: hidden; }
+      }
     `;
   }
 
@@ -424,7 +452,7 @@ class StremioLibraryCard extends LitElement {
     this._similarSourceItem = null;
     this._loadingSimilar = false;
     this._viewMode = 'library'; // 'library' or 'catalog'
-    
+
     // Bind methods that are used as event handlers
     this._closeSimilarView = this._closeSimilarView.bind(this);
     this._closeDetail = this._closeDetail.bind(this);
@@ -438,7 +466,7 @@ class StremioLibraryCard extends LitElement {
       // Basic
       title: 'Stremio Library',
       entity: '', // Auto-discovered if empty
-      
+
       // Display toggles
       show_search: true,
       show_filters: true,
@@ -446,7 +474,7 @@ class StremioLibraryCard extends LitElement {
       show_title: true, // Show title below poster
       show_media_type_badge: false, // Show movie/series badge
       show_similar_button: true, // Show "Find Similar" button in detail view
-      
+
       // Layout
       default_view: 'library',
       columns: 4,
@@ -454,14 +482,14 @@ class StremioLibraryCard extends LitElement {
       card_height: 400, // Max height in pixels (0 = no limit)
       poster_aspect_ratio: '2/3', // 2/3, 16/9, 1/1, 4/3
       horizontal_scroll: false, // Use horizontal scroll instead of grid
-      
+
       // Behavior
       tap_action: 'show_detail', // show_detail, get_streams, open_stremio
       default_sort: 'recent', // recent, alphabetical, year
-      
+
       // Device
       apple_tv_entity: '', // For handover functionality
-      
+
       ...config,
     };
     this._viewMode = this.config.default_view;
@@ -491,20 +519,20 @@ class StremioLibraryCard extends LitElement {
   set hass(hass) {
     const oldHass = this._hass;
     this._hass = hass;
-    
+
     // Load initial data if this is the first time hass is set
     if (!oldHass && hass) {
       this._updateLibraryItems();
       this.requestUpdate();
       return;
     }
-    
+
     // Check if any stremio sensor state changed (to handle auto-discovered entities)
     // Also check the resolved entity specifically
     const resolvedEntity = this._resolveEntity(this.config);
     const oldState = oldHass?.states?.[resolvedEntity];
     const newState = hass?.states?.[resolvedEntity];
-    
+
     if (oldState !== newState) {
       this._updateLibraryItems();
       this.requestUpdate();
@@ -532,7 +560,7 @@ class StremioLibraryCard extends LitElement {
   _resolveEntity(config) {
     // Helper to resolve entity from config - supports both entity ID and device name
     // Also auto-discovers entities when default doesn't exist
-    
+
     if (config.entity) {
       // If it starts with sensor., it's already an entity ID - check if it exists
       if (config.entity.startsWith('sensor.')) {
@@ -559,7 +587,7 @@ class StremioLibraryCard extends LitElement {
         }
       }
     }
-    
+
     // Auto-discover: find ANY stremio library_count sensor in the system
     if (this._hass) {
       for (const entityId in this._hass.states) {
@@ -576,7 +604,7 @@ class StremioLibraryCard extends LitElement {
         }
       }
     }
-    
+
     // Last resort fallback
     console.log('[Library Card] No library sensor found, using default');
     return 'sensor.stremio_library_count';
@@ -592,7 +620,7 @@ class StremioLibraryCard extends LitElement {
     // Get library data from sensor - resolve from device name if needed
     const sensorEntity = this._resolveEntity(this.config);
     const entity = this._hass.states[sensorEntity];
-    
+
     console.log('[Library Card] Looking for entity:', sensorEntity);
     console.log('[Library Card] Entity found:', entity ? 'yes' : 'no');
     console.log('[Library Card] Entity state:', entity?.state);
@@ -614,7 +642,7 @@ class StremioLibraryCard extends LitElement {
     // Apply search filter
     if (this._searchQuery) {
       const query = this._searchQuery.toLowerCase();
-      items = items.filter(item => 
+      items = items.filter(item =>
         item.title?.toLowerCase().includes(query) ||
         item.name?.toLowerCase().includes(query)
       );
@@ -655,26 +683,26 @@ class StremioLibraryCard extends LitElement {
   }
 
   _handleItemClick(item) {
-    // For TV series, show episode picker first to select season/episode
-    if (item.type === 'series') {
+    // Title Info needs only the series ID. Keep the legacy picker outside management mode.
+    if (item.type === 'series' && !this.config.management_mode) {
       console.log('[Library Card] TV Series clicked, showing episode picker first');
       this._showEpisodePicker(item, 'detail');
       return;
     }
-    
-    // For movies, go directly to detail view
+
+    // Movies and management-mode series open title details immediately.
     this._showDetailView(item);
   }
-  
+
   _showDetailView(item) {
     this._selectedItem = item;
-    
+
     // Fire event for external listeners (media details card integration)
     this.dispatchEvent(
       new CustomEvent('stremio-item-selected', {
         bubbles: true,
         composed: true,
-        detail: { 
+        detail: {
           item,
           mediaId: item.imdb_id || item.id,
           title: item.title || item.name,
@@ -688,7 +716,7 @@ class StremioLibraryCard extends LitElement {
   _closeDetail() {
     this._selectedItem = null;
     this.requestUpdate();
-    
+
     // Fire event for external listeners
     this.dispatchEvent(
       new CustomEvent('stremio-detail-closed', {
@@ -701,7 +729,7 @@ class StremioLibraryCard extends LitElement {
   _openInStremio(item) {
     const type = item.type === 'series' ? 'series' : 'movie';
     const id = item.imdb_id || item.id;
-    
+
     // Validate ID format to prevent protocol injection
     // IMDb IDs should match pattern: tt followed by 7-8 digits
     if (id && typeof id === 'string') {
@@ -749,7 +777,7 @@ class StremioLibraryCard extends LitElement {
         this._fetchStreams(item, season, episode);
       }
     };
-    
+
     // Use the global helper if available
     if (window.StremioEpisodePicker) {
       window.StremioEpisodePicker.show(
@@ -786,7 +814,7 @@ class StremioLibraryCard extends LitElement {
         total_seasons: item.total_seasons,
       };
       picker.open = true;
-      
+
       // Listen for selection
       const handler = (e) => {
         picker.removeEventListener('episode-selected', handler);
@@ -800,12 +828,12 @@ class StremioLibraryCard extends LitElement {
     const id = item.imdb_id || item.id;
     console.log('[Library Card] Getting streams for:', id, item.type, season ? `S${season}E${episode}` : '');
     this._showToast('Fetching streams...');
-    
+
     const serviceData = {
       media_id: id,
       media_type: item.type || 'movie',
     };
-    
+
     // Add season/episode for series
     if (item.type === 'series' && season && episode) {
       serviceData.season = season;
@@ -823,12 +851,12 @@ class StremioLibraryCard extends LitElement {
     })
       .then((response) => {
         console.log('[Library Card] Streams response:', response);
-        
+
         // Handle different response formats:
         // WebSocket response: { response: { streams: [...] } }
         // Or direct: { streams: [...] }
         let streams = null;
-        
+
         if (response?.response?.streams) {
           // Format: { response: { streams: [...] } }
           streams = response.response.streams;
@@ -836,7 +864,7 @@ class StremioLibraryCard extends LitElement {
           // Format: { streams: [...] } (direct)
           streams = response.streams;
         }
-        
+
         if (streams && streams.length > 0) {
           console.log('[Library Card] Found', streams.length, 'streams');
           // Show the stream dialog
@@ -858,7 +886,7 @@ class StremioLibraryCard extends LitElement {
 
   _showStreamDialog(item, streams) {
     console.log('[Library Card] Opening stream dialog with', streams.length, 'streams');
-    
+
     // Use the global helper if available
     if (window.StremioStreamDialog) {
       window.StremioStreamDialog.show(
@@ -870,7 +898,8 @@ class StremioLibraryCard extends LitElement {
           imdb_id: item.imdb_id || item.id,
         },
         streams,
-        this.config.apple_tv_entity
+        this.config.apple_tv_entity,
+        { inspectOnly: Boolean(this.config.management_mode) }
       );
     } else {
       // Fallback: Create dialog directly
@@ -887,6 +916,7 @@ class StremioLibraryCard extends LitElement {
       };
       dialog.streams = streams;
       dialog.appleTvEntity = this.config.apple_tv_entity;
+      dialog.inspectOnly = Boolean(this.config.management_mode);
       dialog.open = true;
     }
   }
@@ -899,7 +929,7 @@ class StremioLibraryCard extends LitElement {
       composed: true,
     });
     this.dispatchEvent(event);
-    
+
     // Also log to console for debugging
     console.log(`[Library Card] Toast: ${message}`);
   }
@@ -909,7 +939,7 @@ class StremioLibraryCard extends LitElement {
       const columns = Number(this.config.columns || 4);
       const posterAspectRatio = this.config.poster_aspect_ratio || '2/3';
       const cardHeight = this.config.card_height > 0 ? `${this.config.card_height}px` : 'none';
-      
+
       // Calculate height ratio for padding-bottom technique
       // For aspect ratio "w/h" (width/height), padding-bottom needs height/width * 100
       // e.g., "2/3" -> height/width = 3/2 = 1.5 -> 150%
@@ -920,7 +950,7 @@ class StremioLibraryCard extends LitElement {
           posterHeightRatio = (h / w) * 100;
         }
       }
-      
+
       const gridStyle = `--card-max-height: ${cardHeight}; --grid-columns: ${columns}; --poster-height-ratio: ${posterHeightRatio};`;
 
       const filteredItems = this._getFilteredItems();
@@ -940,9 +970,9 @@ class StremioLibraryCard extends LitElement {
                 <span class="count-badge" aria-label="${this._similarItems.length} items">(${this._similarItems.length})</span>
               </h2>
             </div>
-            <div 
-              class="library-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}" 
-              role="list" 
+            <div
+              class="library-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}"
+              role="list"
               aria-label="Similar items"
               style="${gridStyle}"
             >
@@ -991,8 +1021,8 @@ class StremioLibraryCard extends LitElement {
 
             ${this.config.show_filters ? html`
               <div class="filter-row" role="group" aria-label="Filter options">
-                <select 
-                  class="filter-select" 
+                <select
+                  class="filter-select"
                   @change=${this._handleFilterChange}
                   aria-label="Filter by type"
                 >
@@ -1000,8 +1030,8 @@ class StremioLibraryCard extends LitElement {
                   <option value="movie">Movies</option>
                   <option value="series">Series</option>
                 </select>
-                <select 
-                  class="filter-select" 
+                <select
+                  class="filter-select"
                   @change=${this._handleSortChange}
                   aria-label="Sort by"
                 >
@@ -1014,9 +1044,9 @@ class StremioLibraryCard extends LitElement {
           </div>
 
           ${filteredItems.length > 0 ? html`
-            <div 
-              class="library-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}" 
-              role="list" 
+            <div
+              class="library-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}"
+              role="list"
               aria-label="Library items"
               style="${gridStyle}"
             >
@@ -1047,7 +1077,7 @@ class StremioLibraryCard extends LitElement {
     const item = this._selectedItem;
     const title = item.title || item.name || 'Unknown';
     const hasSelectedEpisode = item.type === 'series' && item.selectedSeason && item.selectedEpisode;
-    const episodeLabel = hasSelectedEpisode 
+    const episodeLabel = hasSelectedEpisode
       ? `S${String(item.selectedSeason).padStart(2, '0')}E${String(item.selectedEpisode).padStart(2, '0')}`
       : null;
 
@@ -1093,15 +1123,16 @@ class StremioLibraryCard extends LitElement {
         </div>
 
         <div class="detail-actions">
-          <button class="detail-button primary" @click=${() => this._openInStremio(item)}>
+          ${!this.config.management_mode ? html`<button class="detail-button primary" @click=${() => this._openInStremio(item)}>
             <ha-icon icon="mdi:play"></ha-icon>
             Open in Stremio
-          </button>
+          </button>` : ''}
           <button class="detail-button secondary" @click=${() => this._getStreamsForDetailItem(item)}>
             <ha-icon icon="mdi:format-list-bulleted"></ha-icon>
             Get Streams
           </button>
         </div>
+        ${renderManagementActions(this, item, html)}
       </div>
     `;
   }
@@ -1150,14 +1181,14 @@ class StremioLibraryCard extends LitElement {
       .then((response) => {
         console.log('[Library Card] Similar content response:', response);
         this._loadingSimilar = false;
-        
+
         let similarItems = null;
         if (response?.response?.similar) {
           similarItems = response.response.similar;
         } else if (response?.similar) {
           similarItems = response.similar;
         }
-        
+
         if (similarItems && similarItems.length > 0) {
           console.log('[Library Card] Found', similarItems.length, 'similar items');
           this._similarSourceItem = item;
@@ -1191,7 +1222,7 @@ class StremioLibraryCard extends LitElement {
     // Clear similar view and show detail for this item
     this._similarItems = null;
     this._similarSourceItem = null;
-    
+
     // Normalize item properties for consistent handling
     // Similar items from API have poster/name/type/imdb_id directly
     const normalizedItem = {
@@ -1201,7 +1232,7 @@ class StremioLibraryCard extends LitElement {
       poster: item.poster || item.thumbnail,
       imdb_id: item.imdb_id || item.id,
     };
-    
+
     this._selectedItem = normalizedItem;
   }
 
@@ -1213,8 +1244,8 @@ class StremioLibraryCard extends LitElement {
     const year = item.year || item.releaseInfo || '';
 
     return html`
-      <div 
-        class="library-item" 
+      <div
+        class="library-item"
         role="listitem"
         tabindex="0"
         @click=${() => this._handleSimilarItemClick(item)}
@@ -1251,8 +1282,8 @@ class StremioLibraryCard extends LitElement {
 
     // Always render all slots to maintain alignment across items in the same row
     return html`
-      <div 
-        class="library-item" 
+      <div
+        class="library-item"
         role="listitem"
         tabindex="0"
         @click=${() => this._handleItemClick(item)}
@@ -1363,8 +1394,8 @@ class StremioLibraryCardEditor extends LitElement {
   _updateEntities() {
     // Find Stremio library sensors
     this._stremioEntities = Object.keys(this.hass.states)
-      .filter(entityId => 
-        entityId.includes('stremio') && 
+      .filter(entityId =>
+        entityId.includes('stremio') &&
         entityId.includes('library_count')
       )
       .map(entityId => ({
@@ -1421,7 +1452,7 @@ class StremioLibraryCardEditor extends LitElement {
               ${this._stremioEntities?.length > 0 ? html`
                 <div class="entity-buttons">
                   ${this._stremioEntities.map(entity => html`
-                    <button 
+                    <button
                       class="entity-btn ${this._config.entity === entity.entity_id ? 'selected' : ''}"
                       @click=${() => this._selectEntity(entity.entity_id)}
                     >
@@ -1436,7 +1467,7 @@ class StremioLibraryCardEditor extends LitElement {
                   <span>No Stremio library sensors found.</span>
                 </div>
               `}
-              
+
               <ha-entity-picker
                 .hass=${this.hass}
                 .value=${this._config.entity || ''}
@@ -1628,11 +1659,11 @@ class StremioLibraryCardEditor extends LitElement {
               ${(!this._appleTvEntities || this._appleTvEntities.length === 0) ? html`
                 <p class="helper-text warning">No Apple TV media players detected. You can still pick any media_player below.</p>
               ` : ''}
-              
+
               ${this._appleTvEntities?.length > 0 ? html`
                 <div class="entity-buttons">
                   ${this._appleTvEntities.map(entity => html`
-                    <button 
+                    <button
                       class="entity-btn ${this._config.apple_tv_entity === entity.entity_id ? 'selected' : ''}"
                       @click=${() => this._selectAppleTv(entity.entity_id)}
                     >
@@ -1640,7 +1671,7 @@ class StremioLibraryCardEditor extends LitElement {
                       <span>${entity.friendly_name}</span>
                     </button>
                   `)}
-                  <button 
+                  <button
                     class="entity-btn ${!this._config.apple_tv_entity ? 'selected' : ''}"
                     @click=${() => this._selectAppleTv('')}
                   >
@@ -1686,7 +1717,7 @@ class StremioLibraryCardEditor extends LitElement {
 
     const target = ev.target;
     let value;
-    
+
     if (target.configValue) {
       if (target.checked !== undefined) {
         value = target.checked;

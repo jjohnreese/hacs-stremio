@@ -1,24 +1,24 @@
 /**
  * Stremio Cards Bundle - Entry Point
- * 
+ *
  * This file bundles all Stremio custom Lovelace cards for Home Assistant.
  * Cards are auto-registered when the integration loads.
- * 
+ *
  * Version is managed via manifest.json and injected via URL query param (?v=x.y.z)
- * 
+ *
  * @author @tamaygz
  */
 
 // Import card components (relative paths - all in frontend/ folder)
 // Cache busting is handled via version query param on the bundle URL
-import './stremio-browse-card.js';
-import './stremio-continue-watching-card.js';
-import './stremio-episode-picker.js';
-import './stremio-library-card.js';
-import './stremio-media-details-card.js';
-import './stremio-player-card.js';
-import './stremio-recommendations-card.js';
-import './stremio-stream-dialog.js';
+import './stremio-browse-card.js?v=0.6.0';
+import './stremio-continue-watching-card.js?v=0.6.0';
+import './stremio-episode-picker.js?v=0.6.0';
+import './stremio-library-card.js?v=0.6.0';
+import './stremio-media-details-card.js?v=0.6.0';
+import './stremio-player-card.js?v=0.6.0';
+import './stremio-recommendations-card.js?v=0.6.0';
+import './stremio-stream-dialog.js?v=0.6.0';
 
 // Get version from URL query param (set by backend from manifest.json)
 const getVersionFromUrl = () => {
@@ -51,7 +51,7 @@ window.customCards.push({
   name: 'Stremio Player Card',
   description: 'Display current Stremio playback with media info and controls',
   preview: true,
-  documentationURL: 'https://github.com/tamaygz/hacs-stremio/blob/main/docs/ui.md',
+  documentationURL: 'https://github.com/jjohnreese/hacs-stremio/blob/master/docs/ui.md',
 });
 
 window.customCards.push({
@@ -59,7 +59,7 @@ window.customCards.push({
   name: 'Stremio Library Card',
   description: 'Browse and search your Stremio library',
   preview: true,
-  documentationURL: 'https://github.com/tamaygz/hacs-stremio/blob/main/docs/ui.md',
+  documentationURL: 'https://github.com/jjohnreese/hacs-stremio/blob/master/docs/ui.md',
 });
 
 window.customCards.push({
@@ -67,7 +67,7 @@ window.customCards.push({
   name: 'Stremio Media Details Card',
   description: 'Display full media metadata with description, cast, and actions',
   preview: true,
-  documentationURL: 'https://github.com/tamaygz/hacs-stremio/blob/main/docs/ui.md',
+  documentationURL: 'https://github.com/jjohnreese/hacs-stremio/blob/master/docs/ui.md',
 });
 
 window.customCards.push({
@@ -75,7 +75,7 @@ window.customCards.push({
   name: 'Stremio Stream Dialog',
   description: 'Stream selector dialog for choosing playback sources',
   preview: false,
-  documentationURL: 'https://github.com/tamaygz/hacs-stremio/blob/main/docs/ui.md',
+  documentationURL: 'https://github.com/jjohnreese/hacs-stremio/blob/master/docs/ui.md',
 });
 
 window.customCards.push({
@@ -83,7 +83,7 @@ window.customCards.push({
   name: 'Stremio Browse Card',
   description: 'Browse popular movies, TV shows, and new content from Stremio catalogs',
   preview: true,
-  documentationURL: 'https://github.com/tamaygz/hacs-stremio/blob/main/docs/ui.md',
+  documentationURL: 'https://github.com/jjohnreese/hacs-stremio/blob/master/docs/ui.md',
 });
 
 window.customCards.push({
@@ -91,7 +91,7 @@ window.customCards.push({
   name: 'Stremio Continue Watching Card',
   description: 'Display and resume content from your Continue Watching list with progress indicators',
   preview: true,
-  documentationURL: 'https://github.com/tamaygz/hacs-stremio/blob/main/docs/ui.md',
+  documentationURL: 'https://github.com/jjohnreese/hacs-stremio/blob/master/docs/ui.md',
 });
 
 window.customCards.push({
@@ -99,5 +99,5 @@ window.customCards.push({
   name: 'Stremio Recommendations Card',
   description: 'Get personalized content recommendations based on your library preferences',
   preview: true,
-  documentationURL: 'https://github.com/tamaygz/hacs-stremio/blob/main/docs/ui.md',
+  documentationURL: 'https://github.com/jjohnreese/hacs-stremio/blob/master/docs/ui.md',
 });

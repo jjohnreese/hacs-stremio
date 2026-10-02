@@ -14,6 +14,7 @@ See: https://github.com/Stremio/stremio-api-client
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import urllib.parse
@@ -23,6 +24,8 @@ from typing import Any, Optional
 import aiohttp
 from aiohttp import ClientError, ClientTimeout
 from homeassistant.exceptions import HomeAssistantError
+
+from .watch_state import update_watch_state
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +78,7 @@ class StremioClient:
         self._session: aiohttp.ClientSession | None = session
         self._owns_session: bool = session is None  # Track if we created the session
         self._last_auth_time: float = 0
+        self.library_update_lock = asyncio.Lock()
         _LOGGER.debug(
             "StremioClient initialized for user: %s (external_session=%s)",
             email,
@@ -393,12 +397,13 @@ class StremioClient:
                 if not isinstance(library_items, list):
                     library_items = []
 
-                # Filter items with watch progress (timeWatched > 0)
+                # Stremio uses the resume offset, not accumulated watch time.
                 watching = [
                     item
                     for item in library_items
                     if isinstance(item, dict)
-                    and item.get("state", {}).get("timeWatched", 0) > 0
+                    and item.get("state", {}).get("timeOffset", 0) > 0
+                    and (not item.get("removed", False) or item.get("temp", False))
                 ]
 
                 # Sort by most recently watched and limit
@@ -825,7 +830,7 @@ class StremioClient:
         # behaviorHints.filename: "Movie.2024.2160p.HEVC.DV.Atmos.mkv"
         behavior_hints = stream.get("behaviorHints", {}) or {}
         filename = behavior_hints.get("filename", "") or ""
-        
+
         text_parts = [
             stream.get("name", ""),
             stream.get("title", ""),
@@ -954,6 +959,82 @@ class StremioClient:
 
         return all_streams
 
+    async def async_update_watch_state(
+        self,
+        media_id: str,
+        media_type: str,
+        action: str,
+        season: int | None = None,
+        episode: int | None = None,
+    ) -> None:
+        """Read, mutate, write and verify one existing Stremio library item.
+
+        The service handler holds library_update_lock across all account mutations.
+        Credentials and response bodies are never included in errors or logs here.
+        """
+        if not self._auth_key:
+            raise StremioConnectionError("Client not authenticated")
+        item = await self.async_find_existing_item(media_id)
+        if not item:
+            raise StremioConnectionError("Add this title to the library first")
+        if item.get("type") != media_type:
+            raise StremioConnectionError("Media type does not match the library item")
+        metadata = None
+        if media_type == "series" and action != "clear_resume_progress":
+            metadata = await self.async_get_series_metadata(media_id)
+            if not metadata:
+                raise StremioConnectionError(
+                    "Episode metadata is unavailable; no changes made"
+                )
+        try:
+            candidate = update_watch_state(
+                item, action, _utc_iso_ms_z(), metadata, season, episode
+            )
+        except ValueError as err:
+            raise StremioConnectionError(str(err)) from err
+        session = await self._get_session()
+        try:
+            async with session.post(
+                STREMIO_DATASTORE_PUT_URL,
+                json={
+                    "authKey": self._auth_key,
+                    "collection": COLLECTION_LIBRARY_ITEM,
+                    "changes": [candidate],
+                },
+            ) as response:
+                if response.status == 401:
+                    raise StremioAuthError("Authentication expired")
+                if response.status != 200:
+                    raise StremioConnectionError(
+                        "Stremio rejected the watch-state update"
+                    )
+                data = await response.json()
+                success = data.get("success") or (
+                    isinstance(data.get("result"), dict)
+                    and data["result"].get("success")
+                )
+                if not success:
+                    raise StremioConnectionError(
+                        "Stremio did not accept the watch-state update"
+                    )
+        except (ClientError, asyncio.TimeoutError) as err:
+            raise StremioConnectionError(
+                "Connection failed while updating watched status"
+            ) from err
+        saved = await self.async_find_existing_item(media_id)
+        changed_keys = {
+            key
+            for key, value in candidate["state"].items()
+            if item.get("state", {}).get(key) != value
+        }
+        if not saved or any(
+            saved.get("state", {}).get(key) != candidate["state"][key]
+            for key in changed_keys
+        ):
+            raise StremioConnectionError(
+                "Stremio watch-state read-back did not match the update"
+            )
+
     async def async_add_to_library(
         self, media_id: str, media_type: str = "movie"
     ) -> bool:
@@ -999,7 +1080,7 @@ class StremioClient:
             # Update mtime to current time
             library_item["_mtime"] = now
             library_item["removed"] = False  # ensure not marked as removed
-            library_item["state"]["lastWatched"] = now  # update lastWatched time
+            library_item["temp"] = False
 
             # Prepare payload for datastorePut
 
@@ -1083,6 +1164,7 @@ class StremioClient:
                 return False
             # Update item object to mark as removed, keep other fields intact
             library_item["removed"] = True
+            library_item["temp"] = False
             library_item["_mtime"] = current_time
 
             # Prepare payload for datastorePut
@@ -1221,7 +1303,7 @@ class StremioClient:
         for item in watching:
             try:
                 # Skip removed items
-                if item.get("removed", False):
+                if item.get("removed", False) and not item.get("temp", False):
                     continue
 
                 # Extract item data
@@ -1249,7 +1331,7 @@ class StremioClient:
                     "title": name,
                     "type": item_type,
                     "poster": item.get("poster"),
-                    "progress": state.get("timeWatched", 0),
+                    "progress": state.get("timeOffset", 0),
                     "duration": state.get("duration", 0),
                     "season": season,
                     "episode": episode,
@@ -1376,6 +1458,71 @@ class StremioClient:
                 f"Failed to get addon collection: {err}"
             ) from err
 
+    async def async_get_title_metadata(
+        self, media_id: str, media_type: str
+    ) -> dict[str, Any]:
+        """Read title details from Cinemeta by exact ID, without changing the account."""
+        if media_type not in ("movie", "series") or not media_id or len(media_id) > 256:
+            raise StremioConnectionError("A valid movie or series ID is required")
+        encoded_id = urllib.parse.quote(media_id, safe="")
+        url = f"https://v3-cinemeta.strem.io/meta/{media_type}/{encoded_id}.json"
+        session = await self._get_session()
+        try:
+            async with session.get(url, timeout=ClientTimeout(total=15)) as response:
+                if response.status == 404:
+                    raise StremioConnectionError(
+                        "Cinemeta has no details for this title"
+                    )
+                if response.status != 200:
+                    raise StremioConnectionError(
+                        "Title details are temporarily unavailable"
+                    )
+                data = await response.json()
+        except (ClientError, asyncio.TimeoutError, ValueError) as err:
+            raise StremioConnectionError(
+                "Could not load title details from Cinemeta"
+            ) from err
+        meta = data.get("meta") if isinstance(data, dict) else None
+        if not isinstance(meta, dict) or not meta.get("name"):
+            raise StremioConnectionError("Cinemeta has no details for this title")
+        if (
+            meta.get("id", media_id) != media_id
+            or meta.get("type", media_type) != media_type
+        ):
+            raise StremioConnectionError(
+                "Title metadata did not match the requested title"
+            )
+
+        def text(value: Any, limit: int = 20000) -> str | None:
+            return value[:limit] if isinstance(value, str) and value.strip() else None
+
+        def names(value: Any) -> list[str]:
+            if isinstance(value, str):
+                return [value[:256]] if value.strip() else []
+            if not isinstance(value, list):
+                return []
+            return [
+                name[:256]
+                for name in value[:50]
+                if isinstance(name, str) and name.strip()
+            ]
+
+        # This response is deliberately title metadata only; no streams, API keys or watch state.
+        return {
+            "id": media_id,
+            "type": media_type,
+            "title": text(meta.get("name"), 512),
+            "year": text(meta.get("releaseInfo") or meta.get("year"), 64),
+            "runtime": text(meta.get("runtime"), 64),
+            "rating": text(meta.get("imdbRating"), 32),
+            "description": text(meta.get("description")),
+            "cast": names(meta.get("cast")),
+            "genres": names(meta.get("genres") or meta.get("genre")),
+            "director": names(meta.get("director")),
+            "poster": text(meta.get("poster"), 2048),
+            "background": text(meta.get("background"), 2048),
+        }
+
     async def async_get_series_metadata(self, media_id: str) -> dict[str, Any] | None:
         """Fetch series metadata including seasons and episodes from Cinemeta.
 
@@ -1498,7 +1645,7 @@ class StremioClient:
             "posterShape": meta.get("posterShape", "poster"),
             "year": meta.get("releaseInfo"),
             "description": meta.get("description"),
-            "genres": meta.get("genres", []),
+            "genres": meta.get("genres") or meta.get("genre", []),
             "cast": meta.get("cast", []),
             "director": meta.get("director"),
             "rating": meta.get("imdbRating"),
@@ -1512,6 +1659,17 @@ class StremioClient:
         skip: int = 0,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
+        """Return a limited catalog batch for existing integration consumers."""
+        page = await self._async_get_catalog_page(media_type, catalog_id, genre, skip)
+        return page["items"][:limit]
+
+    async def _async_get_catalog_page(
+        self,
+        media_type: str = "movie",
+        catalog_id: str = "top",
+        genre: str | None = None,
+        skip: int = 0,
+    ) -> dict[str, Any]:
         """Fetch catalog items from Cinemeta (popular, trending, etc.).
 
         Uses Cinemeta's catalog endpoint to browse popular movies and series.
@@ -1527,10 +1685,9 @@ class StremioClient:
             catalog_id: Catalog identifier ("top" for popular/trending)
             genre: Optional genre filter (Action, Drama, etc.)
             skip: Number of items to skip for pagination
-            limit: Maximum items to return (default 50)
 
         Returns:
-            List of catalog item dictionaries with keys:
+            A native page with items, next_skip and has_more. Item dictionaries have:
             - id: IMDb ID
             - type: "movie" or "series"
             - name: Title
@@ -1561,7 +1718,7 @@ class StremioClient:
         # Build extra path components for genre and skip
         extra_parts = []
         if genre:
-            extra_parts.append(f"genre={genre}")
+            extra_parts.append(f"genre={urllib.parse.quote(str(genre), safe='')}")
         if skip > 0:
             extra_parts.append(f"skip={skip}")
 
@@ -1585,19 +1742,22 @@ class StremioClient:
                         media_type,
                         catalog_id,
                     )
-                    return []
+                    raise StremioConnectionError(
+                        "Cinemeta could not load this catalog page"
+                    )
 
                 data = await response.json()
-                metas = data.get("metas", [])
+                metas = data.get("metas", []) if isinstance(data, dict) else None
+                if not isinstance(metas, list) or len(metas) > 100:
+                    raise StremioConnectionError(
+                        "Cinemeta returned an invalid catalog page"
+                    )
 
                 if not metas:
                     _LOGGER.debug(
                         "No catalog items found for %s/%s", media_type, catalog_id
                     )
-                    return []
-
-                # Limit results
-                metas = metas[:limit]
+                    return {"items": [], "next_skip": skip, "has_more": False}
 
                 # Process catalog items into consistent format
                 processed_items = []
@@ -1609,7 +1769,11 @@ class StremioClient:
                     except (AttributeError, TypeError, KeyError) as err:
                         _LOGGER.debug(
                             "Error processing catalog item %s: %s",
-                            meta.get("id", "unknown") if isinstance(meta, dict) else "unknown",
+                            (
+                                meta.get("id", "unknown")
+                                if isinstance(meta, dict)
+                                else "unknown"
+                            ),
                             err,
                         )
                         continue
@@ -1620,13 +1784,75 @@ class StremioClient:
                     media_type,
                     catalog_id,
                 )
-                return processed_items
+                # Native pages are 50 positions; some missing metadata entries produce
+                # 49 returned titles. Advance by provider positions, not filtered count.
+                # A final empty page confirms exhaustion rather than guessing from a
+                # short page and prematurely hiding Load More.
+                return {
+                    "items": processed_items,
+                    "next_skip": skip + max(50, len(metas)),
+                    "has_more": True,
+                }
 
         except Exception as err:
             _LOGGER.error(
                 "Error fetching catalog %s/%s: %s", media_type, catalog_id, err
             )
             raise StremioConnectionError(f"Failed to fetch catalog: {err}") from err
+
+    async def async_browse_catalog(
+        self,
+        media_type: str = "movie",
+        catalog_type: str = "popular",
+        genre: str | None = None,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Preserve the limited, non-paginated browse action behavior."""
+        page = await self.async_browse_catalog_page(
+            media_type, catalog_type, genre, skip
+        )
+        return page["items"][:limit]
+
+    async def async_browse_catalog_page(
+        self,
+        media_type: str = "movie",
+        catalog_type: str = "popular",
+        genre: str | None = None,
+        skip: int = 0,
+    ) -> dict[str, Any]:
+        """Route Popular and New to their distinct Cinemeta feeds, retaining scores."""
+        if media_type not in ("movie", "series") or catalog_type not in (
+            "popular",
+            "new",
+            "genre",
+        ):
+            raise StremioConnectionError("Invalid catalog type")
+        if catalog_type == "new":
+            # Cinemeta's New feed is the year catalog; its genre parameter is a year.
+            page = await self._async_get_catalog_page(
+                media_type=media_type,
+                catalog_id="year",
+                genre=str(datetime.now(timezone.utc).year),
+                skip=skip,
+            )
+            if genre:
+                # The feed cannot combine its year parameter with a thematic genre.
+                # Filter this loaded page without replacing New with the Popular feed.
+                page["items"] = [
+                    item
+                    for item in page["items"]
+                    if genre.casefold()
+                    in {
+                        value.casefold()
+                        for value in item.get("genres", [])
+                        if isinstance(value, str)
+                    }
+                ]
+            return page
+        return await self._async_get_catalog_page(
+            media_type=media_type, catalog_id="top", genre=genre, skip=skip
+        )
 
     async def async_get_popular_movies(
         self, genre: str | None = None, skip: int = 0, limit: int = 50
@@ -1726,9 +1952,7 @@ class StremioClient:
         if skip > 0:
             extras.append(f"skip={skip}")
         extras_path = "&".join(extras)
-        search_url = (
-            f"{CINEMETA_BASE_URL}/catalog/{media_type}/imdb/{extras_path}.json"
-        )
+        search_url = f"{CINEMETA_BASE_URL}/catalog/{media_type}/imdb/{extras_path}.json"
 
         try:
             session = await self._get_session()
@@ -1762,9 +1986,7 @@ class StremioClient:
                     if not isinstance(meta, dict):
                         continue
                     try:
-                        results.append(
-                            self._process_catalog_meta(meta, media_type)
-                        )
+                        results.append(self._process_catalog_meta(meta, media_type))
                     except Exception as err:
                         _LOGGER.debug(
                             "Skipping malformed search result for '%s': %s",
@@ -2092,7 +2314,6 @@ class StremioClient:
             # Extract genres and other metadata for finding similar content
             source_genres = source_meta.get("genres", [])
             source_director = source_meta.get("director")
-            source_cast = source_meta.get("cast", [])[:3]  # Top 3 cast members
 
             _LOGGER.debug(
                 "Source: %s, genres=%s, director=%s",
@@ -2243,11 +2464,8 @@ class StremioClient:
 
                 data = await response.json()
                 meta = data.get("meta", {})
-                default_video_id = meta.get("behaviorHints", {}).get(
-                    "defaultVideoId", ""
-                )
-                # If no default video ID, return None as we can't construct full item
-                if not default_video_id or not meta:
+                # Series commonly have episodes rather than a defaultVideoId.
+                if not meta:
                     _LOGGER.debug("No metadata found for item %s", media_id)
                     return None
 
@@ -2259,6 +2477,7 @@ class StremioClient:
                     "posterShape": "poster",
                     "removed": True,
                     "temp": False,
+                    "behaviorHints": meta.get("behaviorHints", {}),
                     "state": {
                         "lastWatched": "",
                         "timeWatched": 0,

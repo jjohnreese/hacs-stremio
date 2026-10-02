@@ -1,9 +1,9 @@
 /**
  * Stremio Stream Dialog
- * 
+ *
  * Modal dialog to display available streams for a media item
  * with clipboard copy functionality.
- * 
+ *
  * @customElement stremio-stream-dialog
  * @extends LitElement
  */
@@ -17,7 +17,7 @@ const loadCardHelpers = async () => {
       css: Object.getPrototypeOf(customElements.get("ha-panel-lovelace")).prototype.css,
     };
   }
-  
+
   await customElements.whenDefined("ha-panel-lovelace");
   const Lit = Object.getPrototypeOf(customElements.get("ha-panel-lovelace"));
   return { LitElement: Lit, html: Lit.prototype.html, css: Lit.prototype.css };
@@ -33,6 +33,7 @@ class StremioStreamDialog extends LitElement {
       mediaItem: { type: Object },
       streams: { type: Array },
       appleTvEntity: { type: String },
+      inspectOnly: { type: Boolean },
       _loading: { type: Boolean },
       _copiedIndex: { type: Number },
     };
@@ -360,7 +361,7 @@ class StremioStreamDialog extends LitElement {
 
     // Use configured entity or fallback to hardcoded default
     const deviceId = this.appleTvEntity || 'media_player.apple_tv';
-    
+
     this.hass.callService('stremio', 'handover_to_apple_tv', {
       device_id: deviceId,
       stream_url: stream.url,
@@ -389,8 +390,8 @@ class StremioStreamDialog extends LitElement {
 
   render() {
     return html`
-      <div 
-        class="overlay ${this.open ? 'open' : ''}" 
+      <div
+        class="overlay ${this.open ? 'open' : ''}"
         @click=${this._handleOverlayClick}
         role="dialog"
         aria-modal="true"
@@ -402,8 +403,8 @@ class StremioStreamDialog extends LitElement {
             <h3 id="stream-dialog-title">
               ${this.mediaItem?.title || 'Available Streams'}
             </h3>
-            <button 
-              class="close-btn" 
+            <button
+              class="close-btn"
               @click=${this._close}
               aria-label="Close dialog"
             >
@@ -412,7 +413,7 @@ class StremioStreamDialog extends LitElement {
           </div>
 
           <div class="dialog-content">
-            ${this._loading ? this._renderLoading() : 
+            ${this._loading ? this._renderLoading() :
               this.streams.length > 0 ? this._renderStreams() : this._renderEmpty()}
           </div>
         </div>
@@ -456,7 +457,7 @@ class StremioStreamDialog extends LitElement {
     if (stream.parsed_metadata) {
       return stream.parsed_metadata;
     }
-    
+
     // Fallback: parse client-side for backward compatibility
     return this._parseStreamMetadataFallback(stream);
   }
@@ -474,10 +475,10 @@ class StremioStreamDialog extends LitElement {
       hdr: null,
       audio: null,
     };
-    
+
     // Get addon name
     metadata.addon = stream.addon || stream.source || null;
-    
+
     // Combine ALL relevant fields for parsing - addons use different conventions
     // name: "[RD ⚡] Comet 2160p"
     // title: "Comet | ElfHosted | RD" (addon info)
@@ -485,7 +486,7 @@ class StremioStreamDialog extends LitElement {
     // behaviorHints.filename: "Movie.2024.2160p.HEVC.DV.Atmos.mkv"
     const behaviorHints = stream.behaviorHints || {};
     const filename = behaviorHints.filename || '';
-    
+
     const textParts = [
       stream.name || '',
       stream.title || '',
@@ -493,19 +494,19 @@ class StremioStreamDialog extends LitElement {
       filename,
     ];
     const text = textParts.filter(p => p).join(' ');
-    
+
     // Extract file size (e.g., "1.5 GB", "15.2GB", "800 MB")
     const sizeMatch = text.match(/(\d+(?:\.\d+)?)\s*(GB|MB|TB)/i);
     if (sizeMatch) {
       metadata.size = `${sizeMatch[1]} ${sizeMatch[2].toUpperCase()}`;
     }
-    
+
     // Extract seeders (e.g., "👤 150", "S: 45", "seeders: 100")
     const seedersMatch = text.match(/(?:👤|⬆️|seeders?[:\s]*|S[:\s]*)(\d+)/i);
     if (seedersMatch) {
       metadata.seeders = seedersMatch[1];
     }
-    
+
     // Extract video codec
     if (/\b(HEVC|H\.?265|x265)\b/i.test(text)) {
       metadata.codec = 'HEVC';
@@ -514,7 +515,7 @@ class StremioStreamDialog extends LitElement {
     } else if (/\bAV1\b/i.test(text)) {
       metadata.codec = 'AV1';
     }
-    
+
     // Extract HDR type
     if (/\b(Dolby.?Vision|DV)\b/i.test(text)) {
       metadata.hdr = 'DV';
@@ -523,7 +524,7 @@ class StremioStreamDialog extends LitElement {
     } else if (/\bHDR10?\b/i.test(text)) {
       metadata.hdr = 'HDR';
     }
-    
+
     // Extract audio format
     if (/\b(Atmos)\b/i.test(text)) {
       metadata.audio = 'Atmos';
@@ -534,7 +535,7 @@ class StremioStreamDialog extends LitElement {
     } else if (/\b(DTS[-:]?HD)\b/i.test(text)) {
       metadata.audio = 'DTS-HD';
     }
-    
+
     return metadata;
   }
 
@@ -552,7 +553,7 @@ class StremioStreamDialog extends LitElement {
       name = name.replace(/\.(mkv|mp4|avi|webm|m4v)$/i, '');
       return name;
     }
-    
+
     // 2. Check description - some addons put detailed release info here
     // Look for patterns like "Fallout.S01E02.2160p.WEB..." in description
     if (stream.description) {
@@ -567,7 +568,7 @@ class StremioStreamDialog extends LitElement {
         return descFirstLine;
       }
     }
-    
+
     // 3. Fall back to name or title
     return stream.name || stream.title || `Stream ${index + 1}`;
   }
@@ -585,7 +586,7 @@ class StremioStreamDialog extends LitElement {
         allKeys: Object.keys(stream),
       });
     }
-    
+
     const isCopied = this._copiedIndex === index;
     const streamName = this._getStreamDisplayName(stream, index);
     const meta = this._getStreamMetadata(stream);
@@ -633,7 +634,7 @@ class StremioStreamDialog extends LitElement {
         </div>
 
         <div class="stream-actions" role="group" aria-label="Stream actions">
-          <button 
+          <button
             class="action-btn secondary ${isCopied ? 'success' : ''}"
             @click=${() => this._copyToClipboard(stream.url, index)}
             aria-label="${isCopied ? 'Copied to clipboard' : `Copy ${streamName} URL to clipboard`}"
@@ -641,13 +642,13 @@ class StremioStreamDialog extends LitElement {
             <ha-icon icon="${isCopied ? 'mdi:check' : 'mdi:content-copy'}"></ha-icon>
             ${isCopied ? 'Copied!' : 'Copy'}
           </button>
-          <button 
+          ${!this.inspectOnly ? html`<button
             class="action-btn"
             @click=${() => this._playOnAppleTv(stream)}
             aria-label="Send ${streamName} to Apple TV"
           >
             <ha-icon icon="mdi:apple"></ha-icon>
-          </button>
+          </button>` : ''}
         </div>
       </div>
     `;
@@ -661,7 +662,7 @@ if (!customElements.get('stremio-stream-dialog')) {
 
 // Global helper to open the dialog
 window.StremioStreamDialog = {
-  show(hass, mediaItem, streams, appleTvEntity) {
+  show(hass, mediaItem, streams, appleTvEntity, options = {}) {
     let dialog = document.querySelector('stremio-stream-dialog');
     if (!dialog) {
       dialog = document.createElement('stremio-stream-dialog');
@@ -671,6 +672,7 @@ window.StremioStreamDialog = {
     dialog.mediaItem = mediaItem;
     dialog.streams = streams || [];
     dialog.appleTvEntity = appleTvEntity;
+    dialog.inspectOnly = Boolean(options.inspectOnly);
     dialog.open = true;
     return dialog;
   },

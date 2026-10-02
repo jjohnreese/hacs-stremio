@@ -94,6 +94,12 @@ add_to_library:
   name: Add to Library
   description: Add a media item to your Stremio library.
   fields:
+    config_entry_id:
+      name: "Stremio account"
+      description: "Required when multiple Stremio accounts are loaded."
+      selector:
+        config_entry:
+          integration: stremio
     media_id:
       name: Media ID
       description: The IMDB ID of the media item to add.
@@ -116,6 +122,12 @@ remove_from_library:
   name: Remove from Library
   description: Remove a media item from your Stremio library.
   fields:
+    config_entry_id:
+      name: "Stremio account"
+      description: "Required when multiple Stremio accounts are loaded."
+      selector:
+        config_entry:
+          integration: stremio
     media_id:
       name: Media ID
       description: The IMDB ID of the media item to remove.
@@ -181,7 +193,7 @@ browse_catalog:
   fields:
     media_type:
       name: Media Type
-      description: Type of media to browse (movie or series).
+      description: Type of media (movie or series).
       required: false
       default: "movie"
       example: "movie"
@@ -251,6 +263,12 @@ browse_catalog:
           min: 1
           max: 100
           mode: slider
+    paginate:
+      name: "Return a native catalog page"
+      description: "Return a complete provider page with next_skip and has_more. Requires limit 50; keeps continuation correct with genre filters."
+      default: false
+      selector:
+        boolean:
 
 search_catalog:
   name: Search Catalog
@@ -366,3 +384,130 @@ get_addons:
   name: Get Addons
   description: Retrieve the list of configured Stremio addons with their details including capabilities, supported types, and catalogs.
   fields: {}
+
+mark_watched:
+  name: "Mark as watched"
+  description: "Mark a movie or selected episode as watched and clear its resume position."
+  fields:
+    config_entry_id:
+      name: "Stremio account"
+      description: "Required when multiple Stremio accounts are loaded."
+      selector:
+        config_entry:
+          integration: stremio
+    media_id:
+      name: "Media ID"
+      required: true
+      example: "tt0903747"
+      selector:
+        text:
+    media_type:
+      name: "Media type"
+      required: true
+      selector:
+        select:
+          options:
+            - "movie"
+            - "series"
+    season:
+      name: "Season"
+      description: "Required for series; season 0 supports specials."
+      selector:
+        number:
+          min: 0
+          max: 1000
+          mode: box
+    episode:
+      name: "Episode"
+      description: "Required for series."
+      selector:
+        number:
+          min: 1
+          max: 10000
+          mode: box
+
+mark_unwatched:
+  name: "Mark as unwatched"
+  description: "Reset watched status for a movie or selected episode and clear its resume position."
+  fields:
+    config_entry_id:
+      name: "Stremio account"
+      description: "Required when multiple Stremio accounts are loaded."
+      selector:
+        config_entry:
+          integration: stremio
+    media_id:
+      name: "Media ID"
+      required: true
+      example: "tt0903747"
+      selector:
+        text:
+    media_type:
+      name: "Media type"
+      required: true
+      selector:
+        select:
+          options:
+            - "movie"
+            - "series"
+    season:
+      name: "Season"
+      description: "Required for series; season 0 supports specials."
+      selector:
+        number:
+          min: 0
+          max: 1000
+          mode: box
+    episode:
+      name: "Episode"
+      description: "Required for series."
+      selector:
+        number:
+          min: 1
+          max: 10000
+          mode: box
+
+clear_resume_progress:
+  name: "Clear resume progress"
+  description: "Clear the title resume position without changing watched history or library membership."
+  fields:
+    config_entry_id:
+      name: "Stremio account"
+      description: "Required when multiple Stremio accounts are loaded."
+      selector:
+        config_entry:
+          integration: stremio
+    media_id:
+      name: "Media ID"
+      required: true
+      example: "tt0903747"
+      selector:
+        text:
+    media_type:
+      name: "Media type"
+      required: true
+      selector:
+        select:
+          options:
+            - "movie"
+            - "series"
+
+get_title_metadata:
+  name: "Get title information"
+  description: "Read the year, runtime, IMDb score, synopsis, cast, genres and director from Cinemeta."
+  fields:
+    media_id:
+      name: "Media ID"
+      description: "The exact IMDb or Cinemeta ID of the title."
+      required: true
+      example: "tt1375666"
+      selector:
+        text:
+    media_type:
+      name: "Media type"
+      required: true
+      selector:
+        select:
+          options:
+            - "movie"
+            - "series"

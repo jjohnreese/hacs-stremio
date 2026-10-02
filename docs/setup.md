@@ -1,3 +1,5 @@
+> Fork setup: use `https://github.com/jjohnreese/hacs-stremio` in HACS and search for **Stremio Cinema**. See the [current quick start](../README.md#installation) and [Cinema dashboard guide](dashboard.md). The detailed inherited account/device setup below remains applicable; Apple TV handover is optional.
+
 # Stremio Home Assistant Integration - Setup Guide
 
 > **Development Environment?** If you're running Home Assistant Core in a development container and don't see the Add-ons menu or HACS, see [Development Environment Setup](dev-environment-hacs.md) for specific instructions.
@@ -16,7 +18,7 @@
 2. Click on "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add the repository URL: `https://github.com/tamaygz/hacs-stremio`
+5. Add the repository URL: `https://github.com/jjohnreese/hacs-stremio`
 6. Select category "Integration"
 7. Click "Add"
 8. Find "Stremio" in the integration list and click "Download"

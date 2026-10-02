@@ -1,11 +1,13 @@
 /**
  * Stremio Recommendations Card
- * 
+ *
  * Display personalized content recommendations based on your Stremio library preferences.
- * 
+ *
  * @customElement stremio-recommendations-card
  * @extends LitElement
  */
+
+import { renderManagementActions } from './stremio-management.js?v=0.6.0';
 
 // Safe LitElement access - wait for HA frontend to be ready
 const loadCardHelpers = async () => {
@@ -16,7 +18,7 @@ const loadCardHelpers = async () => {
       css: Object.getPrototypeOf(customElements.get("ha-panel-lovelace")).prototype.css,
     };
   }
-  
+
   await customElements.whenDefined("ha-panel-lovelace");
   const Lit = Object.getPrototypeOf(customElements.get("ha-panel-lovelace"));
   return { LitElement: Lit, html: Lit.prototype.html, css: Lit.prototype.css };
@@ -40,6 +42,8 @@ class StremioRecommendationsCard extends LitElement {
 
   static get styles() {
     return css`
+      :host { min-width: 0; max-width: 100%; }
+
       :host {
         display: block;
         height: 100%;
@@ -428,6 +432,26 @@ class StremioRecommendationsCard extends LitElement {
         background: var(--primary-color);
         color: var(--text-primary-color);
       }
+
+      /* Phone layouts keep posters readable even with six desktop columns. */
+      @media (max-width: 600px) {
+        button { min-height: 44px; min-width: 44px; }
+        select, input { min-height: 44px; box-sizing: border-box; }
+        .items-grid:not(.horizontal) {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          padding: 12px;
+        }
+        .items-grid.horizontal .item {
+          width: calc((100% - 12px) / 2);
+          min-width: 130px;
+        }
+        .detail-actions { flex-wrap: wrap; }
+        .detail-button { min-height: 44px; }
+        .item-title { font-size: 13px; line-height: 1.35; white-space: normal;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          height: auto; min-height: 2.7em; overflow: hidden; }
+      }
     `;
   }
 
@@ -439,7 +463,7 @@ class StremioRecommendationsCard extends LitElement {
     this._loading = false;
     this._error = null;
     this._lastFetchTime = 0;
-    
+
     // Bind methods that are used as event handlers
     this._closeDetail = this._closeDetail.bind(this);
   }
@@ -455,35 +479,35 @@ class StremioRecommendationsCard extends LitElement {
       show_title: true, // Show title below poster
       show_reason: true, // Show recommendation reason
       show_media_type_badge: false, // Show Movie/TV badge on poster
-      
+
       // Layout options
       max_items: 20,
       columns: 4,
       card_height: 0, // 0 for auto
       poster_aspect_ratio: '2/3', // 2/3, 16/9, 1/1, 4/3
       horizontal_scroll: false, // Horizontal carousel mode
-      
+
       // Behavior options
       tap_action: 'details', // details, open_stremio, streams
       auto_refresh: false, // Auto-refresh on load
       refresh_interval: 3600, // Seconds between auto-refreshes (default 1 hour)
-      
+
       // Filter defaults
       default_filter: 'all', // all, movie, series
-      
+
       // Device integration
       apple_tv_entity: undefined, // For Apple TV handover
-      
+
       ...config,
     };
-    
+
     this._filterType = this.config.default_filter;
   }
 
   set hass(hass) {
     const oldHass = this._hass;
     this._hass = hass;
-    
+
     // Fetch recommendations on first hass set
     if (!oldHass && hass) {
       this._fetchRecommendations();
@@ -579,13 +603,13 @@ class StremioRecommendationsCard extends LitElement {
 
   _handleItemClick(item) {
     this._selectedItem = item;
-    
+
     // Fire event for external listeners
     this.dispatchEvent(
       new CustomEvent('stremio-item-selected', {
         bubbles: true,
         composed: true,
-        detail: { 
+        detail: {
           item,
           mediaId: item.imdb_id || item.id,
           title: item.title || item.name,
@@ -600,7 +624,7 @@ class StremioRecommendationsCard extends LitElement {
   _closeDetail() {
     this._selectedItem = null;
     this.requestUpdate();
-    
+
     this.dispatchEvent(
       new CustomEvent('stremio-detail-closed', {
         bubbles: true,
@@ -612,7 +636,7 @@ class StremioRecommendationsCard extends LitElement {
   _openInStremio(item) {
     const type = item.type === 'series' ? 'series' : 'movie';
     const id = item.imdb_id || item.id;
-    
+
     if (id && typeof id === 'string') {
       const sanitizedId = id.replace(/[^a-zA-Z0-9_-]/g, '');
       if (sanitizedId && sanitizedId.length > 0) {
@@ -646,6 +670,10 @@ class StremioRecommendationsCard extends LitElement {
 
     // For series, show episode picker
     if (item.type === 'series') {
+      if (item.selectedSeason != null && item.selectedEpisode != null) {
+        this._fetchStreams(item, item.selectedSeason, item.selectedEpisode);
+        return;
+      }
       this._showEpisodePicker(item);
       return;
     }
@@ -653,7 +681,7 @@ class StremioRecommendationsCard extends LitElement {
     this._fetchStreams(item, null, null);
   }
 
-  _showEpisodePicker(item) {
+  _showEpisodePicker(item, mode = 'streams') {
     if (window.StremioEpisodePicker) {
       window.StremioEpisodePicker.show(
         this._hass,
@@ -664,7 +692,12 @@ class StremioRecommendationsCard extends LitElement {
           imdb_id: item.imdb_id || item.id,
         },
         (selection) => {
-          this._fetchStreams(item, selection.season, selection.episode);
+          if (mode === 'detail') {
+            this._selectedItem = { ...item, selectedSeason: selection.season, selectedEpisode: selection.episode };
+            this.requestUpdate();
+          } else {
+            this._fetchStreams(item, selection.season, selection.episode);
+          }
         }
       );
     } else {
@@ -675,12 +708,12 @@ class StremioRecommendationsCard extends LitElement {
   _fetchStreams(item, season, episode) {
     const id = item.imdb_id || item.id;
     this._showToast('Fetching streams...');
-    
+
     const serviceData = {
       media_id: id,
       media_type: item.type || 'movie',
     };
-    
+
     if (item.type === 'series' && season && episode) {
       serviceData.season = season;
       serviceData.episode = episode;
@@ -695,7 +728,7 @@ class StremioRecommendationsCard extends LitElement {
     })
       .then((response) => {
         let streams = response?.response?.streams || response?.streams;
-        
+
         if (streams && streams.length > 0) {
           this._showStreamDialog(item, streams);
         } else {
@@ -719,7 +752,8 @@ class StremioRecommendationsCard extends LitElement {
           imdb_id: item.imdb_id || item.id,
         },
         streams,
-        this.config.apple_tv_entity
+        this.config.apple_tv_entity,
+        { inspectOnly: Boolean(this.config.management_mode) }
       );
     } else {
       let dialog = document.querySelector('stremio-stream-dialog');
@@ -731,6 +765,7 @@ class StremioRecommendationsCard extends LitElement {
       dialog.mediaItem = item;
       dialog.streams = streams;
       dialog.appleTvEntity = this.config.apple_tv_entity;
+      dialog.inspectOnly = Boolean(this.config.management_mode);
       dialog.open = true;
     }
   }
@@ -750,7 +785,7 @@ class StremioRecommendationsCard extends LitElement {
       const columns = Number(this.config.columns || 4);
       const posterAspectRatio = this.config.poster_aspect_ratio || '2/3';
       const cardHeight = this.config.card_height > 0 ? `${this.config.card_height}px` : 'none';
-      
+
       // Calculate height ratio for padding-bottom technique
       let posterHeightRatio = 150; // default 2:3 -> 150%
       if (posterAspectRatio.includes('/')) {
@@ -759,7 +794,7 @@ class StremioRecommendationsCard extends LitElement {
           posterHeightRatio = (h / w) * 100;
         }
       }
-      
+
       const gridStyle = `--card-max-height: ${cardHeight}; --grid-columns: ${columns}; --poster-height-ratio: ${posterHeightRatio};`;
 
       // If an item is selected, show detail view
@@ -787,8 +822,8 @@ class StremioRecommendationsCard extends LitElement {
                 ${this.config.title}
                 <span class="count-badge">(${filteredItems.length})</span>
               </h2>
-              <button 
-                class="refresh-btn ${this._loading ? 'loading' : ''}" 
+              <button
+                class="refresh-btn ${this._loading ? 'loading' : ''}"
                 @click=${this._handleRefresh}
                 aria-label="Refresh recommendations"
                 ?disabled=${this._loading}
@@ -799,19 +834,19 @@ class StremioRecommendationsCard extends LitElement {
 
             ${this.config.show_filters ? html`
               <div class="filter-row">
-                <button 
+                <button
                   class="filter-btn ${this._filterType === 'all' ? 'active' : ''}"
                   @click=${() => this._handleFilterChange('all')}
                 >
                   All
                 </button>
-                <button 
+                <button
                   class="filter-btn ${this._filterType === 'movie' ? 'active' : ''}"
                   @click=${() => this._handleFilterChange('movie')}
                 >
                   Movies
                 </button>
-                <button 
+                <button
                   class="filter-btn ${this._filterType === 'series' ? 'active' : ''}"
                   @click=${() => this._handleFilterChange('series')}
                 >
@@ -833,9 +868,9 @@ class StremioRecommendationsCard extends LitElement {
               <button class="retry-btn" @click=${this._handleRefresh}>Retry</button>
             </div>
           ` : filteredItems.length > 0 ? html`
-            <div 
-              class="items-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}" 
-              role="list" 
+            <div
+              class="items-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}"
+              role="list"
               aria-label="Recommended items"
               style="${gridStyle}"
             >
@@ -868,8 +903,8 @@ class StremioRecommendationsCard extends LitElement {
     const reason = item.recommendation_reason;
 
     return html`
-      <div 
-        class="item" 
+      <div
+        class="item"
         role="listitem"
         tabindex="0"
         @click=${() => this._handleItemClick(item)}
@@ -930,14 +965,20 @@ class StremioRecommendationsCard extends LitElement {
         </div>
 
         <div class="detail-actions">
-          <button class="detail-button primary" @click=${() => this._openInStremio(item)}>
+          ${!this.config.management_mode ? html`<button class="detail-button primary" @click=${() => this._openInStremio(item)}>
             <ha-icon icon="mdi:play"></ha-icon>
             Open in Stremio
-          </button>
-          <button class="detail-button secondary" @click=${() => this._addToLibrary(item)}>
+          </button>` : ''}
+          ${!this.config.management_mode ? html`<button class="detail-button secondary" @click=${() => this._addToLibrary(item)}>
             <ha-icon icon="mdi:plus"></ha-icon>
             Add to Library
-          </button>
+          </button>` : ''}
+          ${this.config.management_mode && item.type === 'series' ? html`
+            <button class="detail-button tertiary" @click=${() => this._showEpisodePicker(item, 'detail')}>
+              <ha-icon icon="mdi:playlist-play"></ha-icon>
+              ${item.selectedEpisode != null ? `Change episode · S${item.selectedSeason}E${item.selectedEpisode}` : 'Select episode'}
+            </button>
+          ` : ''}
         </div>
 
         <div class="detail-actions">
@@ -946,6 +987,7 @@ class StremioRecommendationsCard extends LitElement {
             Get Streams
           </button>
         </div>
+        ${renderManagementActions(this, item, html)}
       </div>
     `;
   }
@@ -1238,11 +1280,11 @@ class StremioRecommendationsCardEditor extends LitElement {
           ${this._expandedSections.device ? html`
             <div class="section-content">
               <p class="helper-text">Select an Apple TV to enable handover functionality.</p>
-              
+
               ${this._appleTvEntities?.length > 0 ? html`
                 <div class="entity-buttons">
                   ${this._appleTvEntities.map(entity => html`
-                    <button 
+                    <button
                       class="entity-btn ${this._config.apple_tv_entity === entity.entity_id ? 'selected' : ''}"
                       @click=${() => this._selectAppleTv(entity.entity_id)}
                     >
@@ -1250,7 +1292,7 @@ class StremioRecommendationsCardEditor extends LitElement {
                       <span>${entity.friendly_name}</span>
                     </button>
                   `)}
-                  <button 
+                  <button
                     class="entity-btn ${!this._config.apple_tv_entity ? 'selected' : ''}"
                     @click=${() => this._selectAppleTv('')}
                   >
@@ -1292,7 +1334,7 @@ class StremioRecommendationsCardEditor extends LitElement {
 
     const target = ev.target;
     let value;
-    
+
     if (target.configValue) {
       if (target.checked !== undefined) {
         value = target.checked;
@@ -1393,4 +1435,3 @@ if (!customElements.get('stremio-recommendations-card-editor')) {
 }
 
 // Note: Card registration with window.customCards is handled in stremio-card-bundle.js
-
