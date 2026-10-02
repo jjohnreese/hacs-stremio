@@ -1,11 +1,13 @@
 /**
  * Stremio Continue Watching Card
- * 
+ *
  * Display and resume content from your Stremio "Continue Watching" list with progress indicators.
- * 
+ *
  * @customElement stremio-continue-watching-card
  * @extends LitElement
  */
+
+import { renderManagementActions } from './stremio-management.js?v=0.6.0';
 
 // Safe LitElement access - wait for HA frontend to be ready
 const loadCardHelpers = async () => {
@@ -16,7 +18,7 @@ const loadCardHelpers = async () => {
       css: Object.getPrototypeOf(customElements.get("ha-panel-lovelace")).prototype.css,
     };
   }
-  
+
   await customElements.whenDefined("ha-panel-lovelace");
   const Lit = Object.getPrototypeOf(customElements.get("ha-panel-lovelace"));
   return { LitElement: Lit, html: Lit.prototype.html, css: Lit.prototype.css };
@@ -41,6 +43,8 @@ class StremioContinueWatchingCard extends LitElement {
 
   static get styles() {
     return css`
+      :host { min-width: 0; max-width: 100%; }
+
       :host {
         display: block;
         height: 100%;
@@ -393,6 +397,26 @@ class StremioContinueWatchingCard extends LitElement {
         font-size: 0.95em;
         margin: 4px 0;
       }
+
+      /* Phone layouts keep posters readable even with six desktop columns. */
+      @media (max-width: 600px) {
+        button { min-height: 44px; min-width: 44px; }
+        select, input { min-height: 44px; box-sizing: border-box; }
+        .items-grid:not(.horizontal) {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          padding: 12px;
+        }
+        .items-grid.horizontal .item {
+          width: calc((100% - 12px) / 2);
+          min-width: 130px;
+        }
+        .detail-actions { flex-wrap: wrap; }
+        .detail-button { min-height: 44px; }
+        .item-title { font-size: 13px; line-height: 1.35; white-space: normal;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          height: auto; min-height: 2.7em; overflow: hidden; }
+      }
     `;
   }
 
@@ -406,7 +430,7 @@ class StremioContinueWatchingCard extends LitElement {
     this._similarSourceItem = null;
     this._loadingSimilar = false;
     this._cameFromSimilarView = false; // Track if detail view was opened from similar view
-    
+
     // Bind methods that are used as event handlers
     this._closeSimilarView = this._closeSimilarView.bind(this);
     this._closeDetail = this._closeDetail.bind(this);
@@ -424,25 +448,25 @@ class StremioContinueWatchingCard extends LitElement {
       show_progress_text: true, // Show percentage below progress bar
       show_media_type_badge: false, // Show Movie/TV badge on poster
       show_similar_button: true, // Show "Find Similar" button in detail view
-      
+
       // Layout options
       max_items: 20,
       columns: 4,
       card_height: 0, // 0 for auto
       poster_aspect_ratio: '2/3', // 2/3, 16/9, 1/1, 4/3
       horizontal_scroll: false, // Horizontal carousel mode
-      
+
       // Behavior options
       tap_action: 'details', // details, play, streams
       default_sort: 'recent', // recent, title, progress
-      
+
       // Device integration
       apple_tv_entity: undefined, // For Apple TV handover
-      
+
       // Note: entity is NOT defaulted here - _resolveEntity will auto-discover
       ...config,
     };
-    
+
     // Initialize sort with config default
     this._sortBy = config.default_sort || this.config.default_sort;
   }
@@ -450,19 +474,19 @@ class StremioContinueWatchingCard extends LitElement {
   set hass(hass) {
     const oldHass = this._hass;
     this._hass = hass;
-    
+
     // Load initial data if this is the first time hass is set
     if (!oldHass && hass) {
       this._updateContinueWatchingItems();
       this.requestUpdate();
       return;
     }
-    
+
     // Check if the resolved entity state changed (handles auto-discovered entities)
     const resolvedEntity = this._resolveEntity(this.config);
     const oldState = oldHass?.states?.[resolvedEntity];
     const newState = hass?.states?.[resolvedEntity];
-    
+
     if (oldState !== newState) {
       this._updateContinueWatchingItems();
       this.requestUpdate();
@@ -496,7 +520,7 @@ class StremioContinueWatchingCard extends LitElement {
     // Get continue watching data from sensor - resolve from device name if needed
     const sensorEntity = this._resolveEntity(this.config);
     const entity = this._hass.states[sensorEntity];
-    
+
     console.log('[Continue Watching Card] Looking for entity:', sensorEntity);
     console.log('[Continue Watching Card] Entity found:', entity ? 'yes' : 'no');
     console.log('[Continue Watching Card] Entity state:', entity?.state);
@@ -515,7 +539,7 @@ class StremioContinueWatchingCard extends LitElement {
   _resolveEntity(config) {
     // Helper to resolve entity from config - supports both entity ID and device name
     // Also auto-discovers entities when default doesn't exist
-    
+
     if (config.entity) {
       // If it starts with sensor., it's already an entity ID - check if it exists
       if (config.entity.startsWith('sensor.')) {
@@ -542,7 +566,7 @@ class StremioContinueWatchingCard extends LitElement {
         }
       }
     }
-    
+
     // Auto-discover: find ANY stremio continue_watching_count sensor in the system
     if (this._hass) {
       for (const entityId in this._hass.states) {
@@ -559,7 +583,7 @@ class StremioContinueWatchingCard extends LitElement {
         }
       }
     }
-    
+
     // Last resort fallback
     console.log('[Continue Watching Card] No continue watching sensor found, using default');
     return 'sensor.stremio_continue_watching_count';
@@ -600,26 +624,26 @@ class StremioContinueWatchingCard extends LitElement {
   }
 
   _handleItemClick(item) {
-    // For TV series, show episode picker first to select season/episode
-    if (item.type === 'series') {
+    // Title Info needs only the series ID. Keep the legacy picker outside management mode.
+    if (item.type === 'series' && !this.config.management_mode) {
       console.log('[Continue Watching Card] TV Series clicked, showing episode picker first');
       this._showEpisodePicker(item, 'detail');
       return;
     }
-    
-    // For movies, go directly to detail view
+
+    // Movies and management-mode series open title details immediately.
     this._showDetailView(item);
   }
-  
+
   _showDetailView(item) {
     this._selectedItem = item;
-    
+
     // Fire event for external listeners (media details card integration)
     this.dispatchEvent(
       new CustomEvent('stremio-item-selected', {
         bubbles: true,
         composed: true,
-        detail: { 
+        detail: {
           item,
           mediaId: item.imdb_id || item.id,
           title: item.title,
@@ -633,7 +657,7 @@ class StremioContinueWatchingCard extends LitElement {
 
   _closeDetail() {
     console.log('[Continue Watching Card] _closeDetail called');
-    
+
     // If we came from similar view, restore it instead of going to main list
     if (this._cameFromSimilarView && this._previousSimilarItems) {
       this._similarItems = this._previousSimilarItems;
@@ -642,10 +666,10 @@ class StremioContinueWatchingCard extends LitElement {
       this._previousSimilarSourceItem = null;
       this._cameFromSimilarView = false;
     }
-    
+
     this._selectedItem = null;
     // No need for requestUpdate() - reactive properties handle this
-    
+
     // Fire event for external listeners
     this.dispatchEvent(
       new CustomEvent('stremio-detail-closed', {
@@ -658,7 +682,7 @@ class StremioContinueWatchingCard extends LitElement {
   _resumeInStremio(item) {
     const type = item.type === 'series' ? 'series' : 'movie';
     const id = item.imdb_id || item.id;
-    
+
     // Validate ID format to prevent protocol injection
     // IMDb IDs should match pattern: tt followed by 7-8 digits
     if (id && typeof id === 'string') {
@@ -706,7 +730,7 @@ class StremioContinueWatchingCard extends LitElement {
         this._fetchStreams(item, season, episode);
       }
     };
-    
+
     // Use the global helper if available
     if (window.StremioEpisodePicker) {
       window.StremioEpisodePicker.show(
@@ -736,12 +760,12 @@ class StremioContinueWatchingCard extends LitElement {
     const id = item.imdb_id || item.id;
     console.log('[Continue Watching Card] Getting streams for:', id, item.type, season ? `S${season}E${episode}` : '');
     this._showToast('Fetching streams...');
-    
+
     const serviceData = {
       media_id: id,
       media_type: item.type || 'movie',
     };
-    
+
     // Add season/episode for series
     if (item.type === 'series' && season && episode) {
       serviceData.season = season;
@@ -759,12 +783,12 @@ class StremioContinueWatchingCard extends LitElement {
     })
       .then((response) => {
         console.log('[Continue Watching Card] Streams response:', response);
-        
+
         // Handle different response formats:
         // WebSocket response: { response: { streams: [...] } }
         // Or direct: { streams: [...] }
         let streams = null;
-        
+
         if (response?.response?.streams) {
           // Format: { response: { streams: [...] } }
           streams = response.response.streams;
@@ -772,7 +796,7 @@ class StremioContinueWatchingCard extends LitElement {
           // Format: { streams: [...] } (direct)
           streams = response.streams;
         }
-        
+
         if (streams && streams.length > 0) {
           console.log('[Continue Watching Card] Found', streams.length, 'streams');
           // Show the stream dialog
@@ -794,7 +818,7 @@ class StremioContinueWatchingCard extends LitElement {
 
   _showStreamDialog(item, streams) {
     console.log('[Continue Watching Card] Opening stream dialog with', streams.length, 'streams');
-    
+
     // Use the global helper if available
     if (window.StremioStreamDialog) {
       window.StremioStreamDialog.show(
@@ -806,7 +830,8 @@ class StremioContinueWatchingCard extends LitElement {
           imdb_id: item.imdb_id || item.id,
         },
         streams,
-        this.config.apple_tv_entity
+        this.config.apple_tv_entity,
+        { inspectOnly: Boolean(this.config.management_mode) }
       );
     } else {
       // Fallback: Create dialog directly
@@ -823,6 +848,7 @@ class StremioContinueWatchingCard extends LitElement {
       };
       dialog.streams = streams;
       dialog.appleTvEntity = this.config.apple_tv_entity;
+      dialog.inspectOnly = Boolean(this.config.management_mode);
       dialog.open = true;
     }
   }
@@ -835,7 +861,7 @@ class StremioContinueWatchingCard extends LitElement {
       composed: true,
     });
     this.dispatchEvent(event);
-    
+
     // Also log to console for debugging
     console.log(`[Continue Watching Card] Toast: ${message}`);
   }
@@ -845,7 +871,7 @@ class StremioContinueWatchingCard extends LitElement {
       const columns = Number(this.config.columns || 4);
       const posterAspectRatio = this.config.poster_aspect_ratio || '2/3';
       const cardHeight = this.config.card_height > 0 ? `${this.config.card_height}px` : 'none';
-      
+
       // Calculate height ratio for padding-bottom technique
       let posterHeightRatio = 150; // default 2:3 -> 150%
       if (posterAspectRatio.includes('/')) {
@@ -854,7 +880,7 @@ class StremioContinueWatchingCard extends LitElement {
           posterHeightRatio = (h / w) * 100;
         }
       }
-      
+
       const gridStyle = `--card-max-height: ${cardHeight}; --grid-columns: ${columns}; --poster-height-ratio: ${posterHeightRatio};`;
 
       const filteredItems = this._getFilteredItems();
@@ -874,9 +900,9 @@ class StremioContinueWatchingCard extends LitElement {
                 <span class="count-badge" aria-label="${this._similarItems.length} items">(${this._similarItems.length})</span>
               </h2>
             </div>
-            <div 
-              class="items-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}" 
-              role="list" 
+            <div
+              class="items-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}"
+              role="list"
               aria-label="Similar items"
               style="${gridStyle}"
             >
@@ -912,8 +938,8 @@ class StremioContinueWatchingCard extends LitElement {
 
             ${this.config.show_filters ? html`
               <div class="filter-row" role="group" aria-label="Filter options">
-                <select 
-                  class="filter-select" 
+                <select
+                  class="filter-select"
                   @change=${this._handleFilterChange}
                   aria-label="Filter by type"
                 >
@@ -921,8 +947,8 @@ class StremioContinueWatchingCard extends LitElement {
                   <option value="movie">Movies</option>
                   <option value="series">TV Series</option>
                 </select>
-                <select 
-                  class="filter-select" 
+                <select
+                  class="filter-select"
                   @change=${this._handleSortChange}
                   aria-label="Sort by"
                 >
@@ -935,9 +961,9 @@ class StremioContinueWatchingCard extends LitElement {
           </div>
 
           ${filteredItems.length > 0 ? html`
-            <div 
-              class="items-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}" 
-              role="list" 
+            <div
+              class="items-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}"
+              role="list"
               aria-label="Continue watching items"
               style="${gridStyle}"
             >
@@ -969,12 +995,12 @@ class StremioContinueWatchingCard extends LitElement {
     const progress = typeof item.progress_percent === 'number' ? item.progress_percent : 0;
     const showTitle = this.config.show_title !== false;
     const showProgressText = this.config.show_progress_text !== false;
-    
+
     // Always render all slots to maintain alignment across items in the same row
     // The content may be empty but the space is reserved
     return html`
-      <div 
-        class="item" 
+      <div
+        class="item"
         role="listitem"
         tabindex="0"
         @click=${() => this._handleItemClick(item)}
@@ -1010,7 +1036,7 @@ class StremioContinueWatchingCard extends LitElement {
     const displaySeason = item.selectedSeason || item.season;
     const displayEpisode = item.selectedEpisode || item.episode;
     const hasEpisodeInfo = item.type === 'series' && displaySeason && displayEpisode;
-    const episodeLabel = hasEpisodeInfo 
+    const episodeLabel = hasEpisodeInfo
       ? `S${String(displaySeason).padStart(2, '0')}E${String(displayEpisode).padStart(2, '0')}`
       : null;
 
@@ -1056,15 +1082,16 @@ class StremioContinueWatchingCard extends LitElement {
         </div>
 
         <div class="detail-actions">
-          <button class="detail-button primary" @click=${() => this._resumeInStremio(item)}>
+          ${!this.config.management_mode ? html`<button class="detail-button primary" @click=${() => this._resumeInStremio(item)}>
             <ha-icon icon="mdi:play"></ha-icon>
             Resume in Stremio
-          </button>
+          </button>` : ''}
           <button class="detail-button secondary" @click=${() => this._getStreamsForDetailItem(item)}>
             <ha-icon icon="mdi:format-list-bulleted"></ha-icon>
             Get Streams
           </button>
         </div>
+        ${renderManagementActions(this, item, html)}
       </div>
     `;
   }
@@ -1115,14 +1142,14 @@ class StremioContinueWatchingCard extends LitElement {
       .then((response) => {
         console.log('[Continue Watching Card] Similar content response:', response);
         this._loadingSimilar = false;
-        
+
         let similarItems = null;
         if (response?.response?.similar) {
           similarItems = response.response.similar;
         } else if (response?.similar) {
           similarItems = response.similar;
         }
-        
+
         if (similarItems && similarItems.length > 0) {
           console.log('[Continue Watching Card] Found', similarItems.length, 'similar items');
           this._similarSourceItem = item;
@@ -1162,11 +1189,11 @@ class StremioContinueWatchingCard extends LitElement {
     // Store the similar items so we can restore them on back
     this._previousSimilarItems = this._similarItems;
     this._previousSimilarSourceItem = this._similarSourceItem;
-    
+
     // Clear similar view and show detail for this item
     this._similarItems = null;
     this._similarSourceItem = null;
-    
+
     // Normalize item properties for consistent handling
     // Similar items from API have poster/name/type/imdb_id directly
     const normalizedItem = {
@@ -1176,7 +1203,7 @@ class StremioContinueWatchingCard extends LitElement {
       poster: item.poster || item.thumbnail,
       imdb_id: item.imdb_id || item.id,
     };
-    
+
     this._selectedItem = normalizedItem;
   }
 
@@ -1188,8 +1215,8 @@ class StremioContinueWatchingCard extends LitElement {
     const year = item.year || item.releaseInfo || '';
 
     return html`
-      <div 
-        class="item" 
+      <div
+        class="item"
         role="listitem"
         tabindex="0"
         @click=${() => this._handleSimilarItemClick(item)}
@@ -1304,8 +1331,8 @@ class StremioContinueWatchingCardEditor extends LitElement {
   _updateEntities() {
     // Find Stremio continue_watching sensors
     this._stremioEntities = Object.keys(this.hass.states)
-      .filter(entityId => 
-        entityId.includes('stremio') && 
+      .filter(entityId =>
+        entityId.includes('stremio') &&
         entityId.includes('continue_watching')
       )
       .map(entityId => ({
@@ -1317,7 +1344,7 @@ class StremioContinueWatchingCardEditor extends LitElement {
     this._appleTvEntities = Object.keys(this.hass.states)
       .filter(entityId => {
         const state = this.hass.states[entityId];
-        return entityId.startsWith('media_player.') && 
+        return entityId.startsWith('media_player.') &&
           (state.attributes.app_name?.toLowerCase().includes('apple tv') ||
            entityId.toLowerCase().includes('apple_tv') ||
            entityId.toLowerCase().includes('appletv'));
@@ -1354,7 +1381,7 @@ class StremioContinueWatchingCardEditor extends LitElement {
               ${this._stremioEntities?.length > 0 ? html`
                 <div class="entity-buttons">
                   ${this._stremioEntities.map(entity => html`
-                    <button 
+                    <button
                       class="entity-btn ${this._config.entity === entity.entity_id ? 'selected' : ''}"
                       @click=${() => this._selectEntity(entity.entity_id)}
                     >
@@ -1369,7 +1396,7 @@ class StremioContinueWatchingCardEditor extends LitElement {
                   <span>No continue watching sensors found.</span>
                 </div>
               `}
-              
+
               <ha-entity-picker
                 .hass=${this.hass}
                 .value=${this._config.entity || ''}
@@ -1557,11 +1584,11 @@ class StremioContinueWatchingCardEditor extends LitElement {
           ${this._expandedSections.device ? html`
             <div class="section-content">
               <p class="helper-text">Select an Apple TV to enable handover functionality.</p>
-              
+
               ${this._appleTvEntities?.length > 0 ? html`
                 <div class="entity-buttons">
                   ${this._appleTvEntities.map(entity => html`
-                    <button 
+                    <button
                       class="entity-btn ${this._config.apple_tv_entity === entity.entity_id ? 'selected' : ''}"
                       @click=${() => this._selectAppleTv(entity.entity_id)}
                     >
@@ -1569,7 +1596,7 @@ class StremioContinueWatchingCardEditor extends LitElement {
                       <span>${entity.friendly_name}</span>
                     </button>
                   `)}
-                  <button 
+                  <button
                     class="entity-btn ${!this._config.apple_tv_entity ? 'selected' : ''}"
                     @click=${() => this._selectAppleTv('')}
                   >
@@ -1615,7 +1642,7 @@ class StremioContinueWatchingCardEditor extends LitElement {
 
     const target = ev.target;
     let value;
-    
+
     if (target.configValue) {
       if (target.checked !== undefined) {
         value = target.checked;

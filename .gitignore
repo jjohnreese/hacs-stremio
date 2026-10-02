@@ -98,3 +98,7 @@ config/custom_components
 config/.ha_run.lock
 .tldr/languages.json
 .tldr/
+# Local handoff/generated files
+*.bak
+*.backup
+node_modules/

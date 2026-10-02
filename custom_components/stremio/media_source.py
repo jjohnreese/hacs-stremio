@@ -583,9 +583,7 @@ class StremioMediaSource(MediaSource):
         try:
             metadata = await client.async_get_series_metadata(media_id)
         except Exception as err:
-            _LOGGER.warning(
-                "Failed to fetch series metadata for %s: %s", media_id, err
-            )
+            _LOGGER.warning("Failed to fetch series metadata for %s: %s", media_id, err)
 
         if not metadata:
             # If we can't get metadata, show an error state instead of crashing
@@ -867,9 +865,7 @@ class StremioMediaSource(MediaSource):
 
         return StremioClient.parse_stream_metadata(stream)
 
-    def _get_stream_display_name(
-        self, stream: dict[str, Any], index: int
-    ) -> str:
+    def _get_stream_display_name(self, stream: dict[str, Any], index: int) -> str:
         """Get the best display name for a stream.
 
         Prefers the actual filename (most informative) over generic addon names.
@@ -889,7 +885,9 @@ class StremioMediaSource(MediaSource):
         filename = behavior_hints.get("filename")
         if filename:
             # Remove common video extensions for cleaner display
-            name = re.sub(r"\.(mkv|mp4|avi|webm|m4v)$", "", filename, flags=re.IGNORECASE)
+            name = re.sub(
+                r"\.(mkv|mp4|avi|webm|m4v)$", "", filename, flags=re.IGNORECASE
+            )
             return name
 
         # 2. Check description - some addons put detailed release info here
@@ -898,7 +896,7 @@ class StremioMediaSource(MediaSource):
             # Match common release name patterns (starts with title, has resolution)
             release_pattern = re.compile(
                 r"^[\w\.\-]+\.(S\d{2}E\d{2}\.)?(\d{3,4}p|4K|2160|1080|720)",
-                re.IGNORECASE
+                re.IGNORECASE,
             )
             if release_pattern.match(description):
                 return description.split("\n")[0].strip()
@@ -910,9 +908,7 @@ class StremioMediaSource(MediaSource):
         # 3. Fall back to name or title
         return stream.get("name") or stream.get("title") or f"Stream {index + 1}"
 
-    def _format_stream_label(
-        self, stream: dict[str, Any], index: int
-    ) -> str:
+    def _format_stream_label(self, stream: dict[str, Any], index: int) -> str:
         """Format stream information into a single-line label for Media Browser.
 
         Home Assistant's Media Browser doesn't support multiline titles,
@@ -1238,17 +1234,16 @@ class StremioMediaSource(MediaSource):
             )
 
     async def _build_new_movies_browse(self) -> BrowseMediaSource:
-        """Build new movies catalog view (same as popular for now)."""
-        # Note: Cinemeta doesn't have a specific "new releases" catalog
-        # Using popular catalog which tends to include recent releases
+        """Build the current-year Cinemeta New movies catalog view."""
         coordinator = self._get_coordinator()
         if not coordinator:
             return self._build_empty_browse(NEW_MOVIES_IDENTIFIER, "New Movies")
 
         try:
             client = coordinator.client
-            # Get popular movies which tend to include recent releases
-            catalog_items = await client.async_get_popular_movies(limit=50)
+            catalog_items = await client.async_browse_catalog(
+                media_type="movie", catalog_type="new", limit=50
+            )
 
             children = []
             for item in catalog_items:
@@ -1271,17 +1266,16 @@ class StremioMediaSource(MediaSource):
             return self._build_empty_browse(NEW_MOVIES_IDENTIFIER, "New Movies")
 
     async def _build_new_series_browse(self) -> BrowseMediaSource:
-        """Build new TV series catalog view (same as popular for now)."""
-        # Note: Cinemeta doesn't have a specific "new releases" catalog
-        # Using popular catalog which tends to include recent series
+        """Build the current-year Cinemeta New series catalog view."""
         coordinator = self._get_coordinator()
         if not coordinator:
             return self._build_empty_browse(NEW_SERIES_IDENTIFIER, "New TV Shows")
 
         try:
             client = coordinator.client
-            # Get popular series which tend to include recent releases
-            catalog_items = await client.async_get_popular_series(limit=50)
+            catalog_items = await client.async_browse_catalog(
+                media_type="series", catalog_type="new", limit=50
+            )
 
             children = []
             for item in catalog_items:
@@ -1500,7 +1494,7 @@ class StremioMediaSource(MediaSource):
         except Exception as err:
             _LOGGER.error("Error fetching similar content for %s: %s", media_id, err)
             return self._build_error_browse(
-                identifier, title, f"Failed to load similar content"
+                identifier, title, "Failed to load similar content"
             )
 
     async def _build_genre_content_browse(

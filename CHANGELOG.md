@@ -1,3 +1,25 @@
+# Fork release 0.6.0 — 2026-10-02
+
+
+
+
+
+Phone layouts use two poster columns with readable titles and larger carousel items. Desktop column settings remain available; the library respects its configured scrolling height.
+
+Series now open title details on the first click in management mode. Title Info does not require an episode; select an episode only for episode-specific watched status or streams.
+
+- Add opt-in library/watch management, episode-aware watched/unwatched, resume clearing and read-back verification.
+- Preserve history on membership changes and serialize local mutations with a per-client lock.
+- Add native Title Info with bounded public metadata and loading/retry states.
+- Correct Popular/New routing, add numeric IMDb loaded-result sorting and badges.
+- Add native-page buffered Load More, retry/feed-switch guards and compact search rows.
+- Include a complete account-neutral Cinema dashboard, setup substitutions, feature/reference documentation and offline regression tests.
+- Point fork metadata/support links to jjohnreese/hacs-stremio and retain upstream credits/history.
+
+See docs/validation.md for current checks and limitations. Live account mutations and external-device playback are not established by offline tests.
+
+---
+
 # Changelog
 
 All notable changes to this project will be documented in this file.

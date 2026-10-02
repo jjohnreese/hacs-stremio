@@ -1,14 +1,17 @@
 /**
  * Stremio Browse Card
- * 
+ *
  * Browse popular movies, TV shows, and new content from Stremio catalogs.
  * Features inline detail view (like library cards) and episode selection for TV shows.
- * 
+ *
  * @customElement stremio-browse-card
  * @extends LitElement
  * @version 0.5.33
  * @cacheBust 2026021223
  */
+
+import { renderManagementActions } from './stremio-management.js?v=0.6.0';
+import { imdbScore, sortCatalogItems } from './stremio-catalog-sorting.js?v=0.6.0';
 
 // Safe LitElement access - wait for HA frontend to be ready
 const loadCardHelpers = async () => {
@@ -19,7 +22,7 @@ const loadCardHelpers = async () => {
       css: Object.getPrototypeOf(customElements.get("ha-panel-lovelace")).prototype.css,
     };
   }
-  
+
   await customElements.whenDefined("ha-panel-lovelace");
   const Lit = Object.getPrototypeOf(customElements.get("ha-panel-lovelace"));
   return { LitElement: Lit, html: Lit.prototype.html, css: Lit.prototype.css };
@@ -36,6 +39,9 @@ class StremioBrowseCard extends LitElement {
       hass: { type: Object },
       config: { type: Object },
       _viewMode: { type: String },
+      _sortBy: { type: String },
+      _catalogError: { type: String },
+      _catalogHasMore: { type: Boolean },
       _mediaType: { type: String },
       _selectedGenre: { type: String },
       _catalogItems: { type: Array },
@@ -52,6 +58,8 @@ class StremioBrowseCard extends LitElement {
 
   static get styles() {
     return css`
+      :host { min-width: 0; max-width: 100%; }
+
       :host {
         display: block;
         height: 100%;
@@ -109,6 +117,28 @@ class StremioBrowseCard extends LitElement {
         border-color: var(--primary-color);
       }
 
+      .imdb-badge {
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+        z-index: 1;
+        padding: 5px 7px;
+        border-radius: 8px;
+        background: rgba(16, 13, 22, .9);
+        border: 1px solid rgba(239, 207, 131, .32);
+        color: #efcf83;
+        font-size: 11px;
+        font-weight: 700;
+        pointer-events: none;
+      }
+
+      .sort-hint {
+        margin: 4px 0 10px;
+        color: var(--secondary-text-color);
+        font-size: 10px;
+        line-height: 1.5;
+      }
+
       .search-container {
         position: relative;
         margin-bottom: 8px;
@@ -149,11 +179,26 @@ class StremioBrowseCard extends LitElement {
       .catalog-grid {
         display: grid;
         grid-template-columns: repeat(var(--grid-columns, 4), 1fr);
+        align-content: start;
+        align-items: start;
+        grid-auto-rows: max-content;
         gap: 12px;
         padding: 16px;
         overflow-y: auto;
         flex: 1;
         min-height: 0;
+      }
+
+      .catalog-results {
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+        max-height: var(--card-max-height, none);
+      }
+
+      .catalog-results > .catalog-grid:not(.horizontal) {
+        overflow-y: visible;
+        flex: none;
       }
 
       .catalog-grid.horizontal {
@@ -501,12 +546,39 @@ class StremioBrowseCard extends LitElement {
         background: var(--primary-color);
         color: var(--text-primary-color);
       }
+
+      /* Phone layouts keep posters readable even with six desktop columns. */
+      @media (max-width: 600px) {
+        button { min-height: 44px; min-width: 44px; }
+        select, input { min-height: 44px; box-sizing: border-box; }
+        .catalog-grid:not(.horizontal) {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          padding: 12px;
+        }
+        .catalog-grid.horizontal .catalog-item {
+          width: calc((100% - 12px) / 2);
+          min-width: 130px;
+        }
+        .detail-actions { flex-wrap: wrap; }
+        .detail-button { min-height: 44px; }
+        .item-title { font-size: 13px; line-height: 1.35; white-space: normal;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          height: auto; min-height: 2.7em; overflow: hidden; }
+      }
     `;
   }
 
   constructor() {
     super();
     this._viewMode = 'popular';
+    this._sortBy = 'catalog';
+    this._catalogRequest = 0;
+    this._catalogError = '';
+    this._catalogPending = [];
+    this._catalogNextSkip = 0;
+    this._catalogHasMore = false;
+    this._catalogLoaded = false;
     this._mediaType = 'movie';
     this._selectedGenre = null;
     this._catalogItems = [];
@@ -524,7 +596,7 @@ class StremioBrowseCard extends LitElement {
       'Documentary', 'Drama', 'Family', 'Fantasy', 'History', 'Horror',
       'Mystery', 'Romance', 'Sci-Fi', 'Sport', 'Thriller', 'War', 'Western'
     ];
-    
+
     // Bind methods that are used as event handlers
     this._closeSimilarView = this._closeSimilarView.bind(this);
     this._closeDetail = this._closeDetail.bind(this);
@@ -537,7 +609,7 @@ class StremioBrowseCard extends LitElement {
     this.config = {
       // Stremio account (for multi-account support)
       entity: undefined, // Stremio media player entity
-      
+
       // Display options
       title: 'Browse Stremio',
       show_view_controls: true,
@@ -545,28 +617,32 @@ class StremioBrowseCard extends LitElement {
       show_genre_filter: true,
       show_title: true, // Show titles below posters
       show_rating: true, // Show rating badge
+      show_sort_controls: Boolean(config.management_mode),
+      show_load_more: Boolean(config.management_mode),
       show_media_type_badge: false, // Show movie/series badge on poster
       show_similar_button: true, // Show "Find Similar" button in detail view
-      
+
       // Layout options
       columns: 4,
       max_items: 50,
       card_height: 500, // Max height in pixels (0 for auto)
       poster_aspect_ratio: '2/3', // 2/3, 16/9, 1/1, 4/3
       horizontal_scroll: false, // Horizontal carousel mode
-      
+
       // Behavior options
       default_view: 'popular',
       default_type: 'movie',
+      default_sort: 'catalog',
       tap_action: 'details', // details, play, streams
-      
+
       // Device integration
       apple_tv_entity: undefined, // For Apple TV handover
-      
+
       ...config,
     };
     this._viewMode = this.config.default_view;
     this._mediaType = this.config.default_type;
+    this._sortBy = this.config.default_sort;
   }
 
   // Define card type for UI editor
@@ -600,7 +676,7 @@ class StremioBrowseCard extends LitElement {
   set hass(hass) {
     const oldHass = this._hass;
     this._hass = hass;
-    
+
     // Load catalog on first hass set
     if (!oldHass && hass) {
       this._loadCatalog();
@@ -611,46 +687,128 @@ class StremioBrowseCard extends LitElement {
     return this._hass;
   }
 
-  async _loadCatalog() {
-    if (!this._hass || this._loading) return;
+  async _loadCatalog(options = {}) {
+    if (!this._hass) return;
+    const append = options.append === true;
+    if (append && (this._loading || this._loadingMore
+        || (!this._catalogPending.length && !this._catalogHasMore))) return;
 
-    this._loading = true;
+    const request = ++this._catalogRequest;
+    if (append) {
+      this._loadingMore = true;
+    } else {
+      this._loading = true;
+      this._loadingMore = false;
+      this._catalogPending = [];
+      this._catalogNextSkip = 0;
+      this._catalogHasMore = false;
+      this._catalogLoaded = false;
+    }
+    this._catalogError = '';
     this.requestUpdate();
 
     try {
-      // Build catalog ID from view mode and media type
-      const catalogId = this._getCatalogId();
-      const mediaSource = `media-source://stremio/${catalogId}`;
-
-      const response = await this._hass.callWS({
-        type: 'media_source/browse_media',
-        media_content_id: mediaSource,
-      });
-
-      if (response && response.children) {
-        this._catalogItems = response.children.slice(0, this.config.max_items);
-      } else {
-        this._catalogItems = [];
+      const batchSize = Math.max(1, Math.min(100, Number(this.config.max_items) || 50));
+      const data = { media_type: this._mediaType, catalog_type: this._viewMode, limit: 50, paginate: true };
+      if (this._selectedGenre) data.genre = this._selectedGenre;
+      // Buffer provider pages so 24-title UI batches never discard the remaining
+      // titles from Cinemeta's native 50-position page.
+      let pending = append ? [...this._catalogPending] : [];
+      let nextSkip = append ? this._catalogNextSkip : 0;
+      let hasMore = append ? this._catalogHasMore : true;
+      const previous = append ? this._catalogItems : [];
+      const seen = new Set(previous.map(item => this._catalogItemKey(item)));
+      const batch = [];
+      let fetchedPages = 0;
+      while (batch.length < batchSize) {
+        if (pending.length) {
+          const item = pending.shift();
+          const key = this._catalogItemKey(item);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          batch.push(item);
+          continue;
+        }
+        // Bound a click to three provider requests, including sparse New+genre pages.
+        if (!hasMore || fetchedPages >= 3) break;
+        const response = await this._callStremioService('browse_catalog', { ...data, skip: nextSkip });
+        if (request !== this._catalogRequest) return;
+        if (typeof response?.has_more !== 'boolean' || !Number.isInteger(response?.next_skip)
+            || (response.has_more && response.next_skip <= nextSkip)) {
+          throw new Error('Catalog pagination is not ready. Please refresh after Home Assistant starts.');
+        }
+        pending = (Array.isArray(response.items) ? response.items : [])
+          .map(item => this._transformCatalogItem(item));
+        nextSkip = response.next_skip;
+        hasMore = response.has_more;
+        fetchedPages += 1;
       }
+      if (request !== this._catalogRequest) return;
+      this._catalogItems = [...previous, ...batch];
+      this._catalogPending = pending;
+      this._catalogNextSkip = nextSkip;
+      this._catalogHasMore = hasMore;
+      this._catalogLoaded = true;
     } catch (err) {
+      if (request !== this._catalogRequest) return;
       console.error('Failed to load catalog:', err);
-      this._catalogItems = [];
+      if (!append) this._catalogItems = [];
+      this._catalogError = err.message || 'Catalog could not be loaded';
     } finally {
-      this._loading = false;
-      this.requestUpdate();
+      if (request === this._catalogRequest) {
+        this._loading = false;
+        this._loadingMore = false;
+        this.requestUpdate();
+      }
     }
+  }
+
+  _catalogItemKey(item) {
+    const id = item.imdb_id || item.id || item.media_content_id;
+    return id ? `${item.type || this._mediaType}:${id}` : null;
+  }
+
+  _loadMoreCatalogResults() {
+    return this._loadCatalog({ append: true });
+  }
+
+  _renderLoadMore(html) {
+    const searching = Boolean(this._searchQuery && this._searchQuery.trim());
+    const hasMore = searching ? this._searchHasMore
+      : this._catalogPending.length > 0 || this._catalogHasMore;
+    const enabled = searching || this.config.show_load_more;
+    if (!enabled) return '';
+    return html`
+      <div class="load-more-container">
+        ${this._catalogError ? html`<p class="sort-hint" role="alert">${this._catalogError}</p>` : ''}
+        ${hasMore || this._catalogError ? html`
+          <button class="load-more-button" ?disabled=${this._loadingMore || this._loading}
+            aria-label="${searching ? 'Load more search results' : 'Load more catalog titles'}"
+            @click=${() => searching
+              ? this._performSearch({ append: this._catalogItems.length > 0 })
+              : this._loadCatalog({ append: this._catalogLoaded })}>
+            ${this._loadingMore ? 'Loading...' : this._catalogError ? 'Try again' : 'Load More'}
+          </button>
+        ` : this._catalogItems.length ? html`<p class="sort-hint" role="status">No more titles</p>` : ''}
+      </div>
+    `;
+  }
+
+  _handleSortChange(event) {
+    this._sortBy = event.target.value;
+    this.requestUpdate();
   }
 
   _getCatalogId() {
     // Build catalog identifier from current view, media type, and optional genre
     const mediaTypeSuffix = this._mediaType === 'movie' ? 'movies' : 'series';
-    
+
     // If genre is selected, use genre-based browsing
     if (this._selectedGenre) {
       const genrePrefix = this._mediaType === 'movie' ? 'movie_genres' : 'series_genres';
       return `${genrePrefix}/${this._selectedGenre}`;
     }
-    
+
     // Otherwise use view-based browsing (popular/new)
     return `${this._viewMode}_${mediaTypeSuffix}`;
   }
@@ -708,7 +866,7 @@ class StremioBrowseCard extends LitElement {
     if (item.thumbnail && item.media_content_id) {
       return item;
     }
-    
+
     // Transform from Cinemeta API format
     return {
       ...item,
@@ -765,12 +923,15 @@ class StremioBrowseCard extends LitElement {
       this._loadingMore = true;
     } else {
       this._loading = true;
+      this._loadingMore = false;
       this._searchHasMore = false;
     }
     this.requestUpdate();
 
     const pageSize = this.config.max_items || 50;
     const skip = append ? this._catalogItems.length : 0;
+    const request = ++this._catalogRequest;
+    this._catalogError = '';
 
     try {
       const result = await this._callStremioService('search_catalog', {
@@ -779,6 +940,7 @@ class StremioBrowseCard extends LitElement {
         limit: pageSize,
         skip,
       });
+      if (request !== this._catalogRequest) return;
 
       const items = (result && Array.isArray(result.items)) ? result.items : [];
       const transformed = items.map(item => this._transformCatalogItem(item));
@@ -791,15 +953,19 @@ class StremioBrowseCard extends LitElement {
       // If the page came back full, there may be more results to fetch.
       this._searchHasMore = transformed.length >= pageSize;
     } catch (err) {
+      if (request !== this._catalogRequest) return;
       console.error('Failed to search catalog:', err);
       if (!append) {
         this._catalogItems = [];
+        this._searchHasMore = false;
       }
-      this._searchHasMore = false;
+      this._catalogError = err.message || 'Search could not be loaded';
     } finally {
-      this._loading = false;
-      this._loadingMore = false;
-      this.requestUpdate();
+      if (request === this._catalogRequest) {
+        this._loading = false;
+        this._loadingMore = false;
+        this.requestUpdate();
+      }
     }
   }
 
@@ -811,15 +977,15 @@ class StremioBrowseCard extends LitElement {
   _handleItemClick(item) {
     // Extract media type from content ID or use current media type filter
     const mediaType = this._getItemMediaType(item);
-    
-    // For TV series, show episode picker first
-    if (mediaType === 'series') {
+
+    // Management details and Title Info are title-level; choose episodes on demand.
+    if (mediaType === 'series' && !this.config.management_mode) {
       console.log('[Browse Card] TV Series clicked, showing episode picker first');
       this._showEpisodePicker(item, 'detail');
       return;
     }
-    
-    // For movies, go directly to detail view
+
+    // Movies and management-mode series open title details immediately.
     this._showDetailView(item);
   }
 
@@ -859,13 +1025,13 @@ class StremioBrowseCard extends LitElement {
 
   _showDetailView(item) {
     this._selectedItem = item;
-    
+
     // Fire event for external listeners
     this.dispatchEvent(
       new CustomEvent('stremio-catalog-item-selected', {
         bubbles: true,
         composed: true,
-        detail: { 
+        detail: {
           item,
           mediaId: item.media_content_id,
           title: item.title,
@@ -878,7 +1044,7 @@ class StremioBrowseCard extends LitElement {
   _closeDetail() {
     this._selectedItem = null;
     this.requestUpdate();
-    
+
     // Fire event for external listeners
     this.dispatchEvent(
       new CustomEvent('stremio-detail-closed', {
@@ -904,10 +1070,10 @@ class StremioBrowseCard extends LitElement {
         this._fetchStreams(item, season, episode);
       }
     };
-    
+
     // Extract media ID from item
     const mediaId = this._extractMediaId(item);
-    
+
     // Use the global helper if available
     if (window.StremioEpisodePicker) {
       window.StremioEpisodePicker.show(
@@ -936,7 +1102,7 @@ class StremioBrowseCard extends LitElement {
         imdb_id: mediaId,
       };
       picker.open = true;
-      
+
       // Listen for selection
       const handler = (e) => {
         picker.removeEventListener('episode-selected', handler);
@@ -989,7 +1155,7 @@ class StremioBrowseCard extends LitElement {
   _openInStremio(item) {
     const type = this._getItemMediaType(item);
     const id = this._extractMediaId(item);
-    
+
     // Validate ID format to prevent protocol injection
     if (id && typeof id === 'string') {
       const sanitizedId = id.replace(/[^a-zA-Z0-9_-]/g, '');
@@ -1003,7 +1169,7 @@ class StremioBrowseCard extends LitElement {
 
   _getStreams(item) {
     const mediaType = this._getItemMediaType(item);
-    
+
     // For series, show episode picker first
     if (mediaType === 'series') {
       console.log('[Browse Card] TV Show detected, opening episode picker');
@@ -1018,15 +1184,15 @@ class StremioBrowseCard extends LitElement {
   _fetchStreams(item, season, episode) {
     const id = this._extractMediaId(item);
     const mediaType = this._getItemMediaType(item);
-    
+
     console.log('[Browse Card] Getting streams for:', id, mediaType, season ? `S${season}E${episode}` : '');
     this._showToast('Fetching streams...');
-    
+
     const serviceData = {
       media_id: id,
       media_type: mediaType,
     };
-    
+
     // Add season/episode for series
     if (mediaType === 'series' && season && episode) {
       serviceData.season = season;
@@ -1060,7 +1226,7 @@ class StremioBrowseCard extends LitElement {
 
   _showStreamDialog(item, streams) {
     console.log('[Browse Card] Opening stream dialog with', streams.length, 'streams');
-    
+
     // Use the global helper if available
     if (window.StremioStreamDialog) {
       window.StremioStreamDialog.show(
@@ -1072,7 +1238,8 @@ class StremioBrowseCard extends LitElement {
           imdb_id: this._extractMediaId(item),
         },
         streams,
-        this.config.apple_tv_entity
+        this.config.apple_tv_entity,
+        { inspectOnly: Boolean(this.config.management_mode) }
       );
     } else {
       // Fallback: Create dialog directly
@@ -1089,6 +1256,7 @@ class StremioBrowseCard extends LitElement {
       };
       dialog.streams = streams;
       dialog.appleTvEntity = this.config.apple_tv_entity;
+      dialog.inspectOnly = Boolean(this.config.management_mode);
       dialog.open = true;
     }
   }
@@ -1162,7 +1330,7 @@ class StremioBrowseCard extends LitElement {
     // Clear similar view and show detail for this item
     this._similarItems = null;
     this._similarSourceItem = null;
-    
+
     // Normalize item properties for consistent handling
     // Similar items have poster/name/type/imdb_id, catalog items have thumbnail/title/media_content_id
     const normalizedItem = {
@@ -1172,7 +1340,7 @@ class StremioBrowseCard extends LitElement {
       // Ensure media_content_id is set if not present (for _extractMediaId fallback)
       media_content_id: item.media_content_id || `${item.type || 'movie'}/${item.imdb_id || item.id}`,
     };
-    
+
     this._selectedItem = normalizedItem;
   }
 
@@ -1184,8 +1352,8 @@ class StremioBrowseCard extends LitElement {
     const year = item.year || item.releaseInfo || '';
 
     return html`
-      <div 
-        class="catalog-item" 
+      <div
+        class="catalog-item"
         role="listitem"
         tabindex="0"
         @click=${() => this._handleSimilarItemClick(item)}
@@ -1221,7 +1389,7 @@ class StremioBrowseCard extends LitElement {
    */
   _getStreamsForDetailItem(item) {
     const mediaType = this._getItemMediaType(item);
-    
+
     if (mediaType === 'series') {
       if (item.selectedSeason && item.selectedEpisode) {
         // Episode already selected, fetch streams directly
@@ -1250,7 +1418,7 @@ class StremioBrowseCard extends LitElement {
     const columns = Number(this.config.columns || 5);
     const posterAspectRatio = this.config.poster_aspect_ratio || '2/3';
     const cardHeight = this.config.card_height > 0 ? `${this.config.card_height}px` : 'none';
-    
+
     // Calculate height ratio for padding-bottom technique
     // For aspect ratio "w/h" (width/height), padding-bottom needs height/width * 100
     // e.g., "2/3" -> height/width = 3/2 = 1.5 -> 150%
@@ -1261,7 +1429,7 @@ class StremioBrowseCard extends LitElement {
         posterHeightRatio = (h / w) * 100;
       }
     }
-    
+
     const gridStyle = `--card-max-height: ${cardHeight}; --grid-columns: ${columns}; --poster-height-ratio: ${posterHeightRatio};`;
 
     // If showing similar items, show that view
@@ -1279,9 +1447,9 @@ class StremioBrowseCard extends LitElement {
               <span class="count-badge">(${this._similarItems.length})</span>
             </h2>
           </div>
-          <div 
-            class="catalog-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}" 
-            role="list" 
+          <div
+            class="catalog-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}"
+            role="list"
             aria-label="Similar items"
             style="${gridStyle}"
           >
@@ -1311,10 +1479,10 @@ class StremioBrowseCard extends LitElement {
       <ha-card>
         <div class="header">
           <div class="header-title">${this.config.title}</div>
-          
+
           ${this.config.show_view_controls ? html`
             <div class="control-row">
-              <button 
+              <button
                 class="control-button ${this._viewMode === 'popular' ? 'active' : ''}"
                 aria-label="Show popular content"
                 aria-pressed="${this._viewMode === 'popular'}"
@@ -1322,7 +1490,7 @@ class StremioBrowseCard extends LitElement {
               >
                 🔥 Popular
               </button>
-              <button 
+              <button
                 class="control-button ${this._viewMode === 'new' ? 'active' : ''}"
                 aria-label="Show new content"
                 aria-pressed="${this._viewMode === 'new'}"
@@ -1335,7 +1503,7 @@ class StremioBrowseCard extends LitElement {
 
           ${this.config.show_type_controls ? html`
             <div class="control-row">
-              <button 
+              <button
                 class="control-button ${this._mediaType === 'movie' ? 'active' : ''}"
                 aria-label="Show movies"
                 aria-pressed="${this._mediaType === 'movie'}"
@@ -1343,7 +1511,7 @@ class StremioBrowseCard extends LitElement {
               >
                 🎬 Movies
               </button>
-              <button 
+              <button
                 class="control-button ${this._mediaType === 'series' ? 'active' : ''}"
                 aria-label="Show TV shows"
                 aria-pressed="${this._mediaType === 'series'}"
@@ -1356,7 +1524,7 @@ class StremioBrowseCard extends LitElement {
 
           ${this.config.show_genre_filter ? html`
             <div class="control-row">
-              <select 
+              <select
                 class="control-button"
                 style="width: 100%; cursor: pointer;"
                 aria-label="Filter by genre"
@@ -1369,6 +1537,22 @@ class StremioBrowseCard extends LitElement {
                 `)}
               </select>
             </div>
+          ` : ''}
+
+          ${this.config.show_sort_controls ? html`
+            <div class="control-row">
+              <select class="control-button" style="width:100%;cursor:pointer"
+                aria-label="Sort catalog" .value=${this._sortBy}
+                @change=${event => this._handleSortChange(event)}>
+                <option value="catalog">Catalog order</option>
+                <option value="imdb_desc">IMDb: highest first</option>
+                <option value="imdb_asc">IMDb: lowest first</option>
+              </select>
+            </div>
+            <p class="sort-hint">
+              ${this._viewMode === 'new' && !this._searchQuery ? `New: ${new Date().getFullYear()} releases. ` : ''}
+              IMDb sorting applies to loaded results; unrated titles stay last.
+            </p>
           ` : ''}
 
           <div class="search-container">
@@ -1388,31 +1572,22 @@ class StremioBrowseCard extends LitElement {
           <div class="loading-spinner">
             <ha-circular-progress active></ha-circular-progress>
           </div>
-        ` : this._catalogItems.length === 0 ? html`
-          <div class="empty-state">
-            ${this._searchQuery ? `No results for "${this._searchQuery}"` : `No ${this._viewMode} ${this._mediaType === 'movie' ? 'movies' : 'TV shows'} found`}
-          </div>
         ` : html`
-          <div 
-            class="catalog-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}" 
-            role="list"
-            aria-label="Catalog items"
-            style="${gridStyle}"
-          >
-            ${this._catalogItems.map(item => this._renderCatalogItem(item))}
+          <div class="catalog-results" style="${gridStyle}">
+            ${this._catalogItems.length ? html`
+              <div class="catalog-grid ${this.config.horizontal_scroll ? 'horizontal' : ''}"
+                role="list" aria-label="Catalog items">
+                ${sortCatalogItems(this._catalogItems, this._sortBy).map(item => this._renderCatalogItem(item))}
+              </div>
+            ` : html`
+              <div class="empty-state">
+                ${this._catalogError || (this._searchQuery ? `No results for "${this._searchQuery}"`
+                  : this._catalogHasMore ? 'No matching titles in this batch. Load More to continue.'
+                  : `No ${this._viewMode} ${this._mediaType === 'movie' ? 'movies' : 'TV shows'} found`)}
+              </div>
+            `}
+            ${this._renderLoadMore(html)}
           </div>
-          ${this._searchQuery && this._searchHasMore ? html`
-            <div class="load-more-container">
-              <button
-                class="load-more-button"
-                @click=${() => this._loadMoreSearchResults()}
-                ?disabled=${this._loadingMore}
-                aria-label="Load more search results"
-              >
-                ${this._loadingMore ? 'Loading...' : 'Load more'}
-              </button>
-            </div>
-          ` : ''}
         `}
       </ha-card>
     `;
@@ -1420,13 +1595,14 @@ class StremioBrowseCard extends LitElement {
 
   _renderCatalogItem(item) {
     const mediaType = this._getItemMediaType(item);
-    
+    const score = imdbScore(item);
+
     return html`
-      <div 
-        class="catalog-item" 
+      <div
+        class="catalog-item"
         role="listitem"
         tabindex="0"
-        aria-label="${item.title}"
+        aria-label="${item.title}${score !== null ? `, IMDb ${score.toFixed(1)}` : ''}"
         @click=${() => this._handleItemClick(item)}
         @keydown=${(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -1437,9 +1613,9 @@ class StremioBrowseCard extends LitElement {
       >
         <div class="catalog-poster-container">
           ${item.thumbnail ? html`
-            <img 
-              class="catalog-poster" 
-              src="${item.thumbnail}" 
+            <img
+              class="catalog-poster"
+              src="${item.thumbnail}"
               alt=""
               loading="lazy"
             />
@@ -1448,6 +1624,9 @@ class StremioBrowseCard extends LitElement {
               <ha-icon icon="mdi:movie-outline"></ha-icon>
             </div>
           `}
+          ${this.config.show_rating !== false && score !== null ? html`
+            <span class="imdb-badge" aria-label="IMDb score ${score.toFixed(1)}">★ ${score.toFixed(1)}</span>
+          ` : ''}
         </div>
         ${this.config.show_media_type_badge ? html`
           <span class="media-type-badge ${mediaType}">${mediaType === 'series' ? 'TV' : 'Movie'}</span>
@@ -1464,7 +1643,7 @@ class StremioBrowseCard extends LitElement {
     const title = item.title || 'Unknown';
     const mediaType = this._getItemMediaType(item);
     const hasSelectedEpisode = mediaType === 'series' && item.selectedSeason && item.selectedEpisode;
-    const episodeLabel = hasSelectedEpisode 
+    const episodeLabel = hasSelectedEpisode
       ? `S${String(item.selectedSeason).padStart(2, '0')}E${String(item.selectedEpisode).padStart(2, '0')}`
       : null;
 
@@ -1499,22 +1678,23 @@ class StremioBrowseCard extends LitElement {
               ${this._loadingSimilar ? 'Loading...' : 'Find Similar'}
             </button>
           ` : ''}
-          <button class="detail-button tertiary" @click=${() => this._addToLibrary(item)}>
+          ${!this.config.management_mode ? html`<button class="detail-button tertiary" @click=${() => this._addToLibrary(item)}>
             <ha-icon icon="mdi:plus"></ha-icon>
             Add to Library
-          </button>
+          </button>` : ''}
         </div>
 
         <div class="detail-actions">
-          <button class="detail-button primary" @click=${() => this._openInStremio(item)}>
+          ${!this.config.management_mode ? html`<button class="detail-button primary" @click=${() => this._openInStremio(item)}>
             <ha-icon icon="mdi:play"></ha-icon>
             Open in Stremio
-          </button>
+          </button>` : ''}
           <button class="detail-button secondary" @click=${() => this._getStreamsForDetailItem(item)}>
             <ha-icon icon="mdi:format-list-bulleted"></ha-icon>
             Get Streams
           </button>
         </div>
+        ${renderManagementActions(this, item, html)}
       </div>
     `;
   }
@@ -1583,8 +1763,8 @@ class StremioBrowseCardEditor extends LitElement {
   _updateEntities() {
     // Find Stremio media player entities (represent each account)
     this._stremioEntities = Object.keys(this.hass.states)
-      .filter(entityId => 
-        entityId.startsWith('media_player.') && 
+      .filter(entityId =>
+        entityId.startsWith('media_player.') &&
         entityId.toLowerCase().includes('stremio')
       )
       .map(entityId => ({
@@ -1655,7 +1835,7 @@ class StremioBrowseCardEditor extends LitElement {
               ${this._stremioEntities?.length > 0 ? html`
                 <div class="entity-buttons">
                   ${this._stremioEntities.map(entity => html`
-                    <button 
+                    <button
                       class="entity-btn ${this._config.entity === entity.entity_id ? 'selected' : ''}"
                       @click=${() => this._selectEntity(entity.entity_id)}
                     >
@@ -1670,7 +1850,7 @@ class StremioBrowseCardEditor extends LitElement {
                   <span>No Stremio accounts found.</span>
                 </div>
               `}
-              
+
               <ha-entity-picker
                 .hass=${this.hass}
                 .value=${this._config.entity || ''}
@@ -1877,11 +2057,11 @@ class StremioBrowseCardEditor extends LitElement {
           ${this._expandedSections.device ? html`
             <div class="section-content">
               <p class="helper-text">Select an Apple TV to enable handover functionality.</p>
-              
+
               ${this._appleTvEntities?.length > 0 ? html`
                 <div class="entity-buttons">
                   ${this._appleTvEntities.map(entity => html`
-                    <button 
+                    <button
                       class="entity-btn ${this._config.apple_tv_entity === entity.entity_id ? 'selected' : ''}"
                       @click=${() => this._selectAppleTv(entity.entity_id)}
                     >
@@ -1889,7 +2069,7 @@ class StremioBrowseCardEditor extends LitElement {
                       <span>${entity.friendly_name}</span>
                     </button>
                   `)}
-                  <button 
+                  <button
                     class="entity-btn ${!this._config.apple_tv_entity ? 'selected' : ''}"
                     @click=${() => this._selectAppleTv('')}
                   >
@@ -1927,7 +2107,7 @@ class StremioBrowseCardEditor extends LitElement {
 
     const target = ev.target;
     let value;
-    
+
     if (target.configValue) {
       if (target.checked !== undefined) {
         value = target.checked;

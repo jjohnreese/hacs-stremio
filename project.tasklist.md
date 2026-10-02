@@ -1,3 +1,16 @@
+# Cinema fork publication — current work
+
+- [x] Compare supplied source against upstream; allowlist fifteen implementation files.
+- [x] Prepare fork metadata, current feature docs and account-neutral dashboard.
+- [x] Run regression/static checks and review privacy.
+- [ ] After the user reinstalls 0.6.0, capture/show updated sanitized screenshots and add the final gallery.
+  - User changed the sequence: publish code/docs first, then capture the installed version.
+- [x] Publish reviewed changes and update GitHub About details.
+
+The inherited tracker below records the original upstream development history, not validation of this fork.
+
+---
+
 # Stremio HACS Integration - Implementation Task List
 
 > **Last Updated**: 2026-01-17
@@ -21,7 +34,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 1: Project Foundation & Setup
-**Goal**: Establish project structure, development environment, and basic scaffolding  
+**Goal**: Establish project structure, development environment, and basic scaffolding
 **Duration**: 1-2 days
 
 ### 1.1 Project Structure & Configuration
@@ -76,7 +89,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 2: Core Integration Components
-**Goal**: Implement config flow, coordinator, and basic HA integration  
+**Goal**: Implement config flow, coordinator, and basic HA integration
 **Duration**: 3-5 days
 
 ### 2.1 Configuration Flow
@@ -145,7 +158,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 3: Entity Implementations
-**Goal**: Create sensors, binary sensors, and media player entity  
+**Goal**: Create sensors, binary sensors, and media player entity
 **Duration**: 4-6 days
 
 ### 3.1 Sensor Platform
@@ -225,7 +238,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 4: Services & Events
-**Goal**: Implement custom services and event firing  
+**Goal**: Implement custom services and event firing
 **Duration**: 2-3 days
 
 ### 4.1 Services
@@ -287,7 +300,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 5: Apple TV Handover Feature
-**Goal**: Implement AirPlay and VLC handover for Apple TV  
+**Goal**: Implement AirPlay and VLC handover for Apple TV
 **Duration**: 3-4 days
 
 ### 5.1 Handover Service Core
@@ -337,7 +350,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 6: Frontend & Custom Cards
-**Goal**: Create custom Lovelace cards for rich UI  
+**Goal**: Create custom Lovelace cards for rich UI
 **Duration**: 5-7 days
 
 ### 6.1 Card Infrastructure
@@ -437,7 +450,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 7: Media Source Integration
-**Goal**: Integrate with HA Media Browser  
+**Goal**: Integrate with HA Media Browser
 **Duration**: 2-3 days
 
 ### 7.1 Media Source Implementation
@@ -470,7 +483,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 8: Testing & Quality Assurance
-**Goal**: Comprehensive testing and code quality  
+**Goal**: Comprehensive testing and code quality
 **Duration**: 4-5 days
 
 ### 8.1 Unit Tests
@@ -566,7 +579,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 9: Documentation & Examples
-**Goal**: Complete user and developer documentation  
+**Goal**: Complete user and developer documentation
 **Duration**: 2-3 days
 
 ### 9.1 User Documentation
@@ -654,7 +667,7 @@ This document tracks the implementation progress of the Stremio HACS integration
 ---
 
 ## Phase 10: Release & Distribution
-**Goal**: Prepare for HACS release and ongoing maintenance  
+**Goal**: Prepare for HACS release and ongoing maintenance
 **Duration**: 2-3 days
 
 ### 10.1 HACS Preparation

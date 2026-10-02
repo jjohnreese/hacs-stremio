@@ -1,7 +1,8 @@
 {
   "domain": "stremio",
-  "name": "Stremio Integration",
+  "name": "Stremio Cinema",
   "codeowners": [
+    "@jjohnreese",
     "@tamaygz"
   ],
   "config_flow": true,
@@ -11,12 +12,12 @@
     "lovelace",
     "media_source"
   ],
-  "documentation": "https://github.com/tamaygz/hacs-stremio",
+  "documentation": "https://github.com/jjohnreese/hacs-stremio",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/tamaygz/hacs-stremio/issues",
+  "issue_tracker": "https://github.com/jjohnreese/hacs-stremio/issues",
   "requirements": [
     "pyatv>=0.16.0"
   ],
-  "version": "0.5.46"
+  "version": "0.6.0"
 }

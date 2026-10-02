@@ -31,12 +31,16 @@ from .const import (
     SERVICE_GET_ADDONS,
     SERVICE_GET_RECOMMENDATIONS,
     SERVICE_GET_SERIES_METADATA,
+    SERVICE_GET_TITLE_METADATA,
     SERVICE_GET_SIMILAR_CONTENT,
     SERVICE_GET_STREAMS,
     SERVICE_GET_UPCOMING_EPISODES,
     SERVICE_HANDOVER_TO_APPLE_TV,
     SERVICE_REFRESH_LIBRARY,
     SERVICE_REMOVE_FROM_LIBRARY,
+    SERVICE_MARK_WATCHED,
+    SERVICE_MARK_UNWATCHED,
+    SERVICE_CLEAR_RESUME_PROGRESS,
     SERVICE_SEARCH_CATALOG,
     SERVICE_SEARCH_LIBRARY,
 )
@@ -60,6 +64,8 @@ ATTR_GENRE = "genre"
 ATTR_SKIP = "skip"
 ATTR_CATALOG_TYPE = "catalog_type"
 ATTR_DAYS_AHEAD = "days_ahead"
+ATTR_CONFIG_ENTRY_ID = "config_entry_id"
+ATTR_PAGINATE = "paginate"
 
 # Service schemas
 SEARCH_LIBRARY_SCHEMA = vol.Schema(
@@ -89,8 +95,16 @@ GET_SERIES_METADATA_SCHEMA = vol.Schema(
     }
 )
 
+GET_TITLE_METADATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_MEDIA_ID): vol.All(cv.string, vol.Length(min=1, max=256)),
+        vol.Required(ATTR_MEDIA_TYPE): vol.In(["movie", "series"]),
+    }
+)
+
 ADD_TO_LIBRARY_SCHEMA = vol.Schema(
     {
+        vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
         vol.Required(ATTR_MEDIA_ID): cv.string,
         vol.Required(ATTR_MEDIA_TYPE): vol.In(["movie", "series"]),
     }
@@ -98,6 +112,7 @@ ADD_TO_LIBRARY_SCHEMA = vol.Schema(
 
 REMOVE_FROM_LIBRARY_SCHEMA = vol.Schema(
     {
+        vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
         vol.Required(ATTR_MEDIA_ID): cv.string,
     }
 )
@@ -124,6 +139,7 @@ BROWSE_CATALOG_SCHEMA = vol.Schema(
         vol.Optional(ATTR_LIMIT, default=50): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=100)  # type: ignore[arg-type]
         ),
+        vol.Optional(ATTR_PAGINATE, default=False): cv.boolean,
     }
 )
 
@@ -169,9 +185,20 @@ GET_SIMILAR_CONTENT_SCHEMA = vol.Schema(
 # Get addons has no required parameters
 GET_ADDONS_SCHEMA = vol.Schema({})
 
+WATCH_STATE_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_MEDIA_ID): cv.string,
+        vol.Required(ATTR_MEDIA_TYPE): vol.In(["movie", "series"]),
+        vol.Optional(ATTR_SEASON): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Optional(ATTR_EPISODE): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    }
+)
+
 
 def _get_entry_data(
     hass: HomeAssistant,
+    config_entry_id: str | None = None,
 ) -> tuple[StremioDataUpdateCoordinator, StremioClient, str]:
     """Get coordinator, client, and entry_id from first config entry.
 
@@ -192,7 +219,12 @@ def _get_entry_data(
         )
 
     # Get the first entry's data
-    entry_id = next(iter(hass.data[DOMAIN]))
+    if config_entry_id is not None:
+        if config_entry_id not in hass.data[DOMAIN]:
+            raise ServiceValidationError("The selected Stremio account is not loaded")
+        entry_id = config_entry_id
+    else:
+        entry_id = next(iter(hass.data[DOMAIN]))
     entry_data = hass.data[DOMAIN][entry_id]
     return entry_data["coordinator"], entry_data["client"], entry_id
 
@@ -203,6 +235,44 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance
     """
+
+    def management_entry(call: ServiceCall):
+        """Require an explicit account when more than one account is loaded."""
+        entry_id = call.data.get(ATTR_CONFIG_ENTRY_ID)
+        if not entry_id and len(hass.data.get(DOMAIN, {})) > 1:
+            raise ServiceValidationError(
+                "Select a Stremio account using config_entry_id"
+            )
+        return _get_entry_data(hass, entry_id)
+
+    async def handle_watch_state(call: ServiceCall) -> None:
+        """Change watched status or resume state, then refresh the account."""
+        coordinator, client, _ = management_entry(call)
+        media_type = call.data[ATTR_MEDIA_TYPE]
+        season = call.data.get(ATTR_SEASON)
+        episode = call.data.get(ATTR_EPISODE)
+        if media_type == "series" and call.service != SERVICE_CLEAR_RESUME_PROGRESS:
+            if season is None or episode is None:
+                raise ServiceValidationError("Select a season and episode first")
+        try:
+            async with client.library_update_lock:
+                await client.async_update_watch_state(
+                    call.data[ATTR_MEDIA_ID], media_type, call.service, season, episode
+                )
+                await coordinator.async_request_refresh()
+        except StremioConnectionError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_get_title_metadata(call: ServiceCall) -> ServiceResponse:
+        """Return exact-ID metadata for the title-info popup."""
+        _, client, _ = _get_entry_data(hass)
+        try:
+            metadata = await client.async_get_title_metadata(
+                call.data[ATTR_MEDIA_ID], call.data[ATTR_MEDIA_TYPE]
+            )
+        except StremioConnectionError as err:
+            raise HomeAssistantError(str(err)) from err
+        return {"metadata": metadata}
 
     async def handle_search_library(call: ServiceCall) -> ServiceResponse:  # type: ignore[return-value]
         """Handle search_library service call."""
@@ -367,7 +437,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def handle_add_to_library(call: ServiceCall) -> None:
         """Handle add_to_library service call."""
-        coordinator, client, _ = _get_entry_data(hass)
+        coordinator, client, _ = management_entry(call)
 
         media_id = call.data[ATTR_MEDIA_ID]
         media_type = call.data[ATTR_MEDIA_TYPE]
@@ -375,10 +445,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _LOGGER.info("Adding to library: %s (%s)", media_id, media_type)
 
         try:
-            await client.async_add_to_library(media_id, media_type)
-
-            # Refresh coordinator data
-            await coordinator.async_request_refresh()
+            async with client.library_update_lock:
+                if not await client.async_add_to_library(media_id, media_type):
+                    raise HomeAssistantError(
+                        "Stremio did not add the title to the library"
+                    )
+                await coordinator.async_request_refresh()
 
             # Fire event
             hass.bus.async_fire(
@@ -395,17 +467,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def handle_remove_from_library(call: ServiceCall) -> None:
         """Handle remove_from_library service call."""
-        coordinator, client, _ = _get_entry_data(hass)
+        coordinator, client, _ = management_entry(call)
 
         media_id = call.data[ATTR_MEDIA_ID]
 
         _LOGGER.info("Removing from library: %s", media_id)
 
         try:
-            await client.async_remove_from_library(media_id)
-
-            # Refresh coordinator data
-            await coordinator.async_request_refresh()
+            async with client.library_update_lock:
+                if not await client.async_remove_from_library(media_id):
+                    raise HomeAssistantError(
+                        "Stremio did not remove the title from the library"
+                    )
+                await coordinator.async_request_refresh()
 
             # Fire event
             hass.bus.async_fire(
@@ -605,16 +679,30 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
 
         try:
-            # Fetch catalog based on media type and catalog type
-            # Note: Currently only "popular" is fully implemented
-            # "new" and "genre" catalog types can be added when API supports them
-            if media_type == "movie":
-                catalog_items = await client.async_get_popular_movies(
-                    genre=genre, skip=skip, limit=limit
+            continuation = {}
+            if call.data.get(ATTR_PAGINATE, False):
+                if limit != 50:
+                    raise ServiceValidationError(
+                        "Paginated catalog requests require limit: 50"
+                    )
+                page = await client.async_browse_catalog_page(
+                    media_type=media_type,
+                    catalog_type=catalog_type,
+                    genre=genre,
+                    skip=skip,
                 )
-            else:  # series
-                catalog_items = await client.async_get_popular_series(
-                    genre=genre, skip=skip, limit=limit
+                catalog_items = page["items"]
+                continuation = {
+                    "next_skip": page["next_skip"],
+                    "has_more": page["has_more"],
+                }
+            else:
+                catalog_items = await client.async_browse_catalog(
+                    media_type=media_type,
+                    catalog_type=catalog_type,
+                    genre=genre,
+                    skip=skip,
+                    limit=limit,
                 )
 
             return {
@@ -623,6 +711,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "media_type": media_type,
                 "catalog_type": catalog_type,
                 "genre": genre,
+                **continuation,
             }
 
         except StremioConnectionError as err:
@@ -820,6 +909,21 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     # Register services
     hass.services.async_register(
         DOMAIN,
+        SERVICE_GET_TITLE_METADATA,
+        handle_get_title_metadata,
+        schema=GET_TITLE_METADATA_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    for action in (
+        SERVICE_MARK_WATCHED,
+        SERVICE_MARK_UNWATCHED,
+        SERVICE_CLEAR_RESUME_PROGRESS,
+    ):
+        hass.services.async_register(
+            DOMAIN, action, handle_watch_state, schema=WATCH_STATE_SCHEMA
+        )
+    hass.services.async_register(
+        DOMAIN,
         SERVICE_SEARCH_LIBRARY,
         handle_search_library,
         schema=SEARCH_LIBRARY_SCHEMA,
@@ -927,7 +1031,11 @@ async def async_unload_services(hass: HomeAssistant) -> None:
     hass.services.async_remove(DOMAIN, SERVICE_SEARCH_LIBRARY)
     hass.services.async_remove(DOMAIN, SERVICE_GET_STREAMS)
     hass.services.async_remove(DOMAIN, SERVICE_GET_SERIES_METADATA)
+    hass.services.async_remove(DOMAIN, SERVICE_GET_TITLE_METADATA)
     hass.services.async_remove(DOMAIN, SERVICE_ADD_TO_LIBRARY)
+    hass.services.async_remove(DOMAIN, SERVICE_MARK_WATCHED)
+    hass.services.async_remove(DOMAIN, SERVICE_MARK_UNWATCHED)
+    hass.services.async_remove(DOMAIN, SERVICE_CLEAR_RESUME_PROGRESS)
     hass.services.async_remove(DOMAIN, SERVICE_REMOVE_FROM_LIBRARY)
     hass.services.async_remove(DOMAIN, SERVICE_REFRESH_LIBRARY)
     hass.services.async_remove(DOMAIN, SERVICE_HANDOVER_TO_APPLE_TV)

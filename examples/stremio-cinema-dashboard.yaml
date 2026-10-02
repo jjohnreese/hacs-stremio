@@ -1,0 +1,340 @@
+# Replace the five stremio_account entity IDs before use. See docs/dashboard.md.
+views:
+  - title: Stremio Cinema
+    path: stremio
+    icon: mdi:movie-open-star
+    type: panel
+    background: "radial-gradient(ellipse at 10% 0%, rgba(111,64,193,.20), transparent 45%), linear-gradient(160deg, #10111b, #080910)"
+    cards:
+      - type: custom:layout-card
+        layout_type: custom:grid-layout
+        layout:
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)
+          grid-template-areas: '"brand brand" "hero hero" "stats stats" "continue continue" "recommend recommend" "movies series" "library library" "footer footer"'
+          grid-gap: 18px
+          margin: 24px auto 40px
+          padding: 0 24px
+          max-width: 1440px
+          mediaquery:
+            "(max-width: 700px)":
+              grid-template-columns: minmax(0, 1fr)
+              grid-template-areas: '"brand" "hero" "stats" "continue" "recommend" "movies" "series" "library" "footer"'
+              grid-gap: 12px
+              margin: 12px auto 24px
+              padding: 0 10px
+        cards:
+          - type: markdown
+            content: |-
+              <ha-icon icon="mdi:movie-open-star"></ha-icon> **STREMIO / CINEMA**
+              # A world worth watching.
+              Your library. Your next obsession. All in one place.
+            view_layout:
+              grid-area: brand
+            card_mod:
+              style: "ha-card { background: transparent; border: 0; box-shadow: none; color: #f5f3ff; } ha-markdown { padding: 8px 4px 4px !important; } ha-markdown ha-icon { color: #b794ff; margin-right: 8px; } ha-markdown h1 { font-size: clamp(28px,4vw,46px); letter-spacing: -1.8px; line-height: 1.1; margin: 12px 0 !important; } ha-markdown p { color: #aaa8bc; } ha-markdown strong { color: #c2a4ff; letter-spacing: .18em; font-size: 11px; }"
+          - type: custom:button-card
+            entity: media_player.stremio_account_stremio
+            view_layout:
+              grid-area: hero
+            show_icon: false
+            show_entity_picture: true
+            show_label: true
+            show_state: false
+            entity_picture: '[[[ return entity?.attributes?.poster || ""; ]]]'
+            name: '[[[ return entity?.attributes?.media_title || "Make tonight a movie night."; ]]]'
+            label: '[[[ const a = entity?.attributes || {}; const episode = a.season && a.episode ? `Season ${a.season} · Episode ${a.episode}` : (a.type === "movie" ? "Movie" : "Your personal cinema"); return `${episode}${a.episode_title ? " · " + a.episode_title : ""}`; ]]]'
+            tap_action:
+              action: more-info
+            hold_action:
+              action: none
+            custom_fields:
+              eyebrow: '[[[ return entity?.state === "playing" ? "●  NOW WATCHING" : "YOUR LATEST WATCH"; ]]]'
+              progress: '[[[ const p = Math.max(0,Math.min(100,Number(entity?.attributes?.progress_percent)||0)); return `<div style="display:flex;justify-content:space-between;color:#cfcae0;font-size:12px;margin-bottom:10px"><span>Watch progress</span><span>${p.toFixed(0)}%</span></div><div style="height:5px;background:rgba(255,255,255,.14);border-radius:5px;overflow:hidden"><div style="height:100%;width:${p}%;background:linear-gradient(90deg,#9b6aff,#dab6ff);border-radius:5px"></div></div>`; ]]]'
+              hint: Tap for playback information
+            styles:
+              card:
+                - min-height: 300px
+                - padding: 34px
+                - border-radius: 28px
+                - border: 1px solid rgba(177,142,255,.25)
+                - box-shadow: 0 20px 60px rgba(0,0,0,.3)
+                - color: "#ffffff"
+                - background: '[[[ const p = entity?.attributes?.poster; return p ? `linear-gradient(90deg,rgba(13,12,26,.98) 0%,rgba(23,16,43,.91) 48%,rgba(33,19,57,.62) 100%),url(${JSON.stringify(p)}) center 35% / cover` : "linear-gradient(120deg,#19162c,#352053)"; ]]]'
+              grid:
+                - grid-template-areas: '"eyebrow i" "n i" "l i" "progress i" "hint i"'
+                - grid-template-columns: minmax(0,1fr) 150px
+                - grid-template-rows: min-content min-content min-content 1fr min-content
+                - column-gap: 30px
+              img_cell:
+                - width: 150px
+                - height: 225px
+                - border-radius: 14px
+                - overflow: hidden
+                - box-shadow: 0 16px 40px rgba(0,0,0,.5)
+              entity_picture:
+                - width: 100%
+                - height: 100%
+                - object-fit: cover
+              name:
+                - justify-self: start
+                - text-align: left
+                - white-space: normal
+                - font-size: clamp(25px,3vw,40px)
+                - font-weight: "800"
+                - letter-spacing: -1.2px
+                - line-height: "1.12"
+                - padding: 14px 0 12px
+              label:
+                - justify-self: start
+                - text-align: left
+                - white-space: normal
+                - font-size: 13px
+                - line-height: "1.6"
+                - color: "#c3bcd6"
+              custom_fields:
+                eyebrow:
+                  - justify-self: start
+                  - color: "#c4a5ff"
+                  - font-size: 10px
+                  - font-weight: "800"
+                  - letter-spacing: .2em
+                progress:
+                  - align-self: end
+                  - width: 100%
+                  - text-align: left
+                  - padding: 22px 0 18px
+                hint:
+                  - justify-self: start
+                  - color: "#aaa0c0"
+                  - font-size: 10px
+            extra_styles: "@media(max-width:600px){ #card {padding:22px !important;min-height:250px !important;border-radius:22px !important;} #container {grid-template-columns:minmax(0,1fr) 85px !important;column-gap:14px !important;} #img-cell {width:85px !important;height:128px !important;align-self:start !important;margin-top:34px;} #name {font-size:25px !important;letter-spacing:-.7px !important;} }"
+          - type: grid
+            columns: 3
+            square: false
+            view_layout:
+              grid-area: stats
+            cards:
+              - type: custom:button-card
+                entity: sensor.stremio_account_library_count
+                name: IN YOUR LIBRARY
+                icon: mdi:movie-open-outline
+                show_state: true
+                tap_action:
+                  action: more-info
+                styles:
+                  card:
+                    - padding: 18px 12px
+                    - border-radius: 18px
+                    - background: rgba(139,102,221,.09)
+                    - border: 1px solid rgba(183,157,232,.14)
+                    - color: "#eee9ff"
+                    - box-shadow: none
+                  grid:
+                    - grid-template-areas: '"i" "s" "n"'
+                  icon:
+                    - width: 23px
+                    - color: "#b696ff"
+                  state:
+                    - font-size: 28px
+                    - font-weight: "750"
+                    - padding: 8px 0 5px
+                  name:
+                    - font-size: 9px
+                    - letter-spacing: .08em
+                    - color: "#aaa4bc"
+              - type: custom:button-card
+                entity: sensor.stremio_account_continue_watching_count
+                name: CONTINUE WATCHING
+                icon: mdi:play-circle-outline
+                show_state: true
+                tap_action:
+                  action: more-info
+                styles:
+                  card:
+                    - padding: 18px 12px
+                    - border-radius: 18px
+                    - background: rgba(139,102,221,.09)
+                    - border: 1px solid rgba(183,157,232,.14)
+                    - color: "#eee9ff"
+                    - box-shadow: none
+                  grid:
+                    - grid-template-areas: '"i" "s" "n"'
+                  icon:
+                    - width: 23px
+                    - color: "#b696ff"
+                  state:
+                    - font-size: 28px
+                    - font-weight: "750"
+                    - padding: 8px 0 5px
+                  name:
+                    - font-size: 9px
+                    - letter-spacing: .08em
+                    - color: "#aaa4bc"
+              - type: custom:button-card
+                entity: binary_sensor.stremio_account_has_new_episodes
+                name: SERIES WITH NEW EPISODES
+                icon: mdi:television-play
+                show_state: true
+                tap_action:
+                  action: more-info
+                styles:
+                  card:
+                    - padding: 18px 8px
+                    - border-radius: 18px
+                    - background: rgba(139,102,221,.09)
+                    - border: 1px solid rgba(183,157,232,.14)
+                    - color: "#eee9ff"
+                    - box-shadow: none
+                  grid:
+                    - grid-template-areas: '"i" "s" "n"'
+                  icon:
+                    - width: 23px
+                    - color: "#b696ff"
+                  state:
+                    - font-size: 28px
+                    - font-weight: "750"
+                    - padding: 8px 0 5px
+                  name:
+                    - font-size: 9px
+                    - letter-spacing: .04em
+                    - white-space: normal
+                    - color: "#aaa4bc"
+                state_display: '[[[ return entity?.state === "unavailable" ? "—" : String(entity?.attributes?.count ?? (entity?.state === "on" ? "New" : 0)); ]]]'
+          - type: custom:stremio-continue-watching-card
+            management_mode: true
+            library_entity: sensor.stremio_account_library_count
+            title: Pick up where you left off
+            view_layout:
+              grid-area: continue
+            card_mod:
+              style: :host { --primary-color:#a77aff; --primary-text-color:#f1ecff; --secondary-text-color:#aca5bd; --card-background-color:#171420; --secondary-background-color:#231b36; --divider-color:rgba(179,151,233,.14); } ha-card { background:linear-gradient(145deg,rgba(27,22,41,.97),rgba(15,14,23,.97)); border:1px solid rgba(179,151,233,.16); border-radius:24px; box-shadow:none; } .header-title { font-weight:750; letter-spacing:-.4px; } .media-poster { border-radius:12px; }
+            entity: sensor.stremio_account_continue_watching_count
+            horizontal_scroll: true
+            columns: 6
+            max_items: 30
+            card_height: 0
+            show_filters: true
+            show_title: true
+            show_progress_text: true
+            show_similar_button: true
+            poster_aspect_ratio: 2/3
+            tap_action: details
+            default_sort: recent
+          - type: custom:stremio-recommendations-card
+            management_mode: true
+            library_entity: sensor.stremio_account_library_count
+            title: Picked for you
+            view_layout:
+              grid-area: recommend
+            card_mod:
+              style: :host { --primary-color:#a77aff; --primary-text-color:#f1ecff; --secondary-text-color:#aca5bd; --card-background-color:#171420; --secondary-background-color:#231b36; --divider-color:rgba(179,151,233,.14); } ha-card { background:linear-gradient(145deg,rgba(27,22,41,.97),rgba(15,14,23,.97)); border:1px solid rgba(179,151,233,.16); border-radius:24px; box-shadow:none; } .header-title { font-weight:750; letter-spacing:-.4px; }
+            horizontal_scroll: true
+            columns: 6
+            max_items: 18
+            card_height: 0
+            show_filters: true
+            show_title: true
+            show_reason: true
+            poster_aspect_ratio: 2/3
+            tap_action: details
+            default_filter: all
+          - type: custom:stremio-browse-card
+            management_mode: true
+            library_entity: sensor.stremio_account_library_count
+            title: Discover movies
+            view_layout:
+              grid-area: movies
+            card_mod:
+              style: :host { --primary-color:#a77aff; --primary-text-color:#f1ecff; --secondary-text-color:#aca5bd; --card-background-color:#171420; --secondary-background-color:#231b36; --divider-color:rgba(179,151,233,.14); } ha-card { background:linear-gradient(145deg,rgba(27,22,41,.97),rgba(15,14,23,.97)); border:1px solid rgba(179,151,233,.16); border-radius:24px; box-shadow:none; } .header-title { font-weight:750; letter-spacing:-.4px; } .search-input,.genre-select,.control-button { border-radius:10px; }
+            entity: media_player.stremio_account_stremio
+            default_view: popular
+            default_type: movie
+            show_view_controls: true
+            show_type_controls: false
+            show_genre_filter: true
+            show_title: true
+            show_rating: true
+            show_similar_button: true
+            columns: 4
+            max_items: 24
+            card_height: 640
+            poster_aspect_ratio: 2/3
+            tap_action: details
+          - type: custom:stremio-browse-card
+            management_mode: true
+            library_entity: sensor.stremio_account_library_count
+            title: Your next binge
+            view_layout:
+              grid-area: series
+            card_mod:
+              style: :host { --primary-color:#a77aff; --primary-text-color:#f1ecff; --secondary-text-color:#aca5bd; --card-background-color:#171420; --secondary-background-color:#231b36; --divider-color:rgba(179,151,233,.14); } ha-card { background:linear-gradient(145deg,rgba(27,22,41,.97),rgba(15,14,23,.97)); border:1px solid rgba(179,151,233,.16); border-radius:24px; box-shadow:none; } .header-title { font-weight:750; letter-spacing:-.4px; } .search-input,.genre-select,.control-button { border-radius:10px; }
+            entity: media_player.stremio_account_stremio
+            default_view: new
+            default_type: series
+            show_view_controls: true
+            show_type_controls: false
+            show_genre_filter: true
+            show_title: true
+            show_rating: true
+            show_similar_button: true
+            columns: 4
+            max_items: 24
+            card_height: 640
+            poster_aspect_ratio: 2/3
+            tap_action: details
+          - type: custom:stremio-library-card
+            management_mode: true
+            library_entity: sensor.stremio_account_library_count
+            title: The collection
+            view_layout:
+              grid-area: library
+            card_mod:
+              style: :host { --primary-color:#a77aff; --primary-text-color:#f1ecff; --secondary-text-color:#aca5bd; --card-background-color:#171420; --secondary-background-color:#231b36; --divider-color:rgba(179,151,233,.14); } ha-card { background:linear-gradient(145deg,rgba(27,22,41,.97),rgba(15,14,23,.97)); border:1px solid rgba(179,151,233,.16); border-radius:24px; box-shadow:none; } .header-title { font-weight:750; letter-spacing:-.4px; } .search-input,.filter-select { border-radius:10px; }
+            entity: sensor.stremio_account_library_count
+            show_search: true
+            show_filters: true
+            show_view_toggle: false
+            show_title: true
+            show_similar_button: true
+            show_media_type_badge: true
+            default_view: library
+            default_sort: recent
+            tap_action: show_detail
+            columns: 6
+            max_items: 120
+            card_height: 680
+            horizontal_scroll: false
+            poster_aspect_ratio: 2/3
+          - type: grid
+            columns: 1
+            square: false
+            view_layout:
+              grid-area: footer
+            cards:
+              - type: custom:button-card
+                entity: button.stremio_account_force_refresh
+                name: Refresh Stremio
+                icon: mdi:refresh
+                tap_action:
+                  action: call-service
+                  service: button.press
+                  target:
+                    entity_id: button.stremio_account_force_refresh
+                styles:
+                  card:
+                    - height: 60px
+                    - border-radius: 16px
+                    - background: rgba(139,102,221,.09)
+                    - border: 1px solid rgba(183,157,232,.14)
+                    - color: "#ded3f4"
+                    - box-shadow: none
+                  grid:
+                    - grid-template-areas: '"i n"'
+                    - grid-template-columns: 32px auto
+                    - justify-content: center
+                  icon:
+                    - width: 20px
+                    - color: "#b696ff"
+                  name:
+                    - font-size: 12px
+                    - font-weight: "650"

@@ -1,315 +1,50 @@
-# Services
+# Stremio actions
 
-## Available Services
+The canonical schemas and field descriptions are [services.yaml](../custom_components/stremio/services.yaml). The Home Assistant action picker exposes those fields. Use `action: stremio.<name>` in automation/script YAML; response-only actions need `response_variable` in a sequence.
 
-### stremio.get_streams
+| Action | Purpose | Response |
+| --- | --- | --- |
+| `search_library` | Search stored titles, genre or cast with limit. | Structured result |
+| `get_streams` | List streams for a movie or selected series episode. | Structured result |
+| `get_series_metadata` | Get seasons and episodes by title ID. | Structured result |
+| `get_title_metadata` | Exact-ID public title details. | Structured result |
+| `add_to_library` | Add/restore a movie or series preserving history. | No response |
+| `remove_from_library` | Soft-remove a title preserving history. | No response |
+| `mark_watched` | Movie or selected episode watched. | No response |
+| `mark_unwatched` | Movie or selected episode unwatched. | No response |
+| `clear_resume_progress` | Clear the current resume offset only. | No response |
+| `refresh_library` | Refresh coordinator data. | No response |
+| `handover_to_apple_tv` | Send a stream/media ID to the selected device entity. | No response |
+| `browse_catalog` | Popular/New/genre public catalog; optional native pagination. | Structured result |
+| `search_catalog` | Search public movie/series catalog with skip/limit. | Structured result |
+| `get_upcoming_episodes` | Request upcoming library episodes. | Structured result |
+| `get_recommendations` | Preference-based recommendations. | Structured result |
+| `get_similar_content` | Find titles similar to a media ID. | Structured result |
+| `get_addons` | Inspect installed Stremio add-ons. | Structured result |
 
-Get available stream URLs for a specific content item.
+The action is **`get_streams`**, not `get_stream_url`. Apple TV uses `device_id` containing a Home Assistant media-player entity ID, not `device_name`. Stream URLs can contain private access tokens; never publish the response or raw links.
 
-**Parameters:**
-- `content_id` (required): IMDb ID or content identifier
-- `type` (optional): Content type ("movie" or "series")
-
-**Example:**
 ```yaml
-service: stremio.get_streams
-data:
-  content_id: "tt1234567"
-  type: "movie"
+sequence:
+  - action: stremio.get_streams
+    data:
+      media_id: tt1375666
+      media_type: movie
+    response_variable: available_streams
 ```
 
-### stremio.search_library
-
-Search your Stremio library.
-
-**Parameters:**
-- `query` (required): Search query string
-
-**Example:**
 ```yaml
-service: stremio.search_library
-data:
-  query: "Inception"
+sequence:
+  - action: stremio.browse_catalog
+    data:
+      media_type: movie
+      catalog_type: popular
+      paginate: true
+      skip: 0
+      limit: 50
+    response_variable: catalog_page
 ```
 
-### stremio.add_to_library
+Native pagination requires `limit: 50` and returns `items`, `next_skip`, and `has_more` alongside the service's documented response fields. Advance with `next_skip`, not the number of returned items. Without `paginate`, existing callers retain a limited list response. New + genre filters each current-year page locally, so an empty filtered batch can still have more provider pages.
 
-Add content to your Stremio library.
-
-**Parameters:**
-- `content_id` (required): Content identifier
-- `type` (required): "movie" or "series"
-- `name` (required): Content name
-
-**Example:**
-```yaml
-service: stremio.add_to_library
-data:
-  content_id: "tt1234567"
-  type: "movie"
-  name: "Inception"
-```
-
-### stremio.remove_from_library
-
-Remove content from your Stremio library.
-
-**Parameters:**
-- `content_id` (required): Content identifier
-
-**Example:**
-```yaml
-service: stremio.remove_from_library
-data:
-  content_id: "tt1234567"
-```
-
-### stremio.refresh_library
-
-Force an immediate library refresh to update continue watching, library items, and other data from the Stremio API.
-
-**When to use:**
-- To manually refresh data outside of the normal polling interval
-- To immediately see library changes made in other Stremio clients
-
-**Automatic Refresh Behavior:**
-- The integration automatically refreshes data at the configured polling interval (default: 30 seconds)
-- Automatic refresh is also triggered 10 seconds after handover to Apple TV completes
-- Library add/remove operations trigger automatic refresh
-
-**Example:**
-```yaml
-service: stremio.refresh_library
-```
-
-### stremio.handover_to_apple_tv
-
-Stream content to Apple TV. When successful, the integration automatically triggers a data refresh after 10 seconds to update the continue watching list with any progress updates from Stremio's backend.
-
-**Parameters:**
-- `entity_id` (required): Apple TV media player entity
-- `content_id` (optional): Content ID to play
-- `stream_url` (optional): Direct stream URL
-- `method` (optional): "auto", "airplay", or "vlc"
-
-**Refresh Behavior:**
-After a successful handover, the integration waits 10 seconds (to allow Stremio's backend to sync watch progress) and then automatically refreshes the continue watching list and other data from the API.
-
-**Example:**
-```yaml
-service: stremio.handover_to_apple_tv
-data:
-  entity_id: media_player.living_room_apple_tv
-  content_id: "tt1234567"
-  method: "auto"
-```
-
-### stremio.browse_catalog
-
-Browse the Stremio catalog for popular or new movies/series with optional genre filtering.
-
-**Parameters:**
-- `media_type` (optional): "movie" or "series" (default: "movie")
-- `catalog_type` (optional): "popular", "new", or "genre" (default: "popular")
-- `genre` (optional): Genre filter (Action, Drama, Comedy, etc.)
-- `skip` (optional): Number of items to skip for pagination (default: 0)
-- `limit` (optional): Maximum items to return, 1-100 (default: 50)
-
-**Returns:**
-- `items`: List of catalog items with metadata
-- `count`: Number of items returned
-- `media_type`: The media type that was browsed
-- `catalog_type`: The catalog type that was browsed
-- `genre`: The genre filter applied (if any)
-
-**Examples:**
-
-Browse popular movies:
-```yaml
-service: stremio.browse_catalog
-data:
-  media_type: "movie"
-  catalog_type: "popular"
-  limit: 20
-```
-
-Browse action movies:
-```yaml
-service: stremio.browse_catalog
-data:
-  media_type: "movie"
-  genre: "Action"
-  limit: 50
-```
-
-Browse popular TV series:
-```yaml
-service: stremio.browse_catalog
-data:
-  media_type: "series"
-  catalog_type: "popular"
-```
-
-Browse drama series with pagination:
-```yaml
-service: stremio.browse_catalog
-data:
-  media_type: "series"
-  genre: "Drama"
-  skip: 20
-  limit: 20
-```
-
-### stremio.get_upcoming_episodes
-
-Get air dates for upcoming episodes of TV series in your library. Useful for tracking when new episodes are releasing.
-
-**Parameters:**
-- `days_ahead` (optional): Number of days to look ahead, 1-30 (default: 7)
-
-**Returns:**
-- `episodes`: List of upcoming episodes with air date info
-- `count`: Number of upcoming episodes found
-- `days_ahead`: The days_ahead parameter used
-
-**Each episode includes:**
-- `series_id`: IMDb ID of the series
-- `series_title`: Name of the series
-- `poster`: Poster image URL
-- `season`: Season number
-- `episode`: Episode number
-- `episode_title`: Title of the episode
-- `air_date`: ISO format air date
-- `air_date_formatted`: Human-readable date (YYYY-MM-DD)
-- `days_until`: Number of days until the episode airs
-
-**Examples:**
-
-Get episodes airing in the next week:
-```yaml
-service: stremio.get_upcoming_episodes
-data:
-  days_ahead: 7
-```
-
-Get episodes airing in the next 2 weeks:
-```yaml
-service: stremio.get_upcoming_episodes
-data:
-  days_ahead: 14
-```
-
-**Automation example - Notify about upcoming episodes:**
-```yaml
-automation:
-  - alias: "Notify upcoming Stremio episodes"
-    trigger:
-      - platform: time
-        at: "09:00:00"
-    action:
-      - service: stremio.get_upcoming_episodes
-        data:
-          days_ahead: 1
-        response_variable: upcoming
-      - condition: template
-        value_template: "{{ upcoming.count > 0 }}"
-      - service: notify.mobile_app
-        data:
-          title: "New Episodes Today!"
-          message: >
-            {% for ep in upcoming.episodes %}
-            {{ ep.series_title }} S{{ ep.season }}E{{ ep.episode }}
-            {% endfor %}
-```
-
-### stremio.get_recommendations
-
-Get personalized content recommendations based on your library preferences. Analyzes genres and content in your library to suggest new content you might enjoy.
-
-**Parameters:**
-- `media_type` (optional): Filter by "movie" or "series", omit for both
-- `limit` (optional): Maximum recommendations, 1-50 (default: 20)
-
-**Returns:**
-- `recommendations`: List of recommended content items
-- `count`: Number of recommendations
-- `media_type`: The type filter applied (if any)
-
-**Each recommendation includes:**
-- `id` / `imdb_id`: Content identifier
-- `title` / `name`: Content title
-- `type`: "movie" or "series"
-- `poster`: Poster image URL
-- `year`: Release year
-- `genres`: List of genres
-- `recommendation_reason`: Why this was recommended (e.g., "Based on your interest in Action")
-
-**Examples:**
-
-Get all recommendations:
-```yaml
-service: stremio.get_recommendations
-data:
-  limit: 20
-```
-
-Get movie recommendations only:
-```yaml
-service: stremio.get_recommendations
-data:
-  media_type: "movie"
-  limit: 15
-```
-
-Get TV series recommendations:
-```yaml
-service: stremio.get_recommendations
-data:
-  media_type: "series"
-  limit: 10
-```
-
-### stremio.get_similar_content
-
-Find similar movies or shows based on a specific content item. Uses genre matching and metadata to find related content.
-
-**Parameters:**
-- `media_id` (required): IMDb ID of the source content (e.g., "tt0903747")
-- `limit` (optional): Maximum similar items, 1-30 (default: 10)
-
-**Returns:**
-- `similar`: List of similar content items
-- `count`: Number of similar items found
-- `source_media_id`: The media_id that was used as the source
-
-**Each similar item includes:**
-- `id` / `imdb_id`: Content identifier
-- `title` / `name`: Content title
-- `type`: "movie" or "series"
-- `poster`: Poster image URL
-- `year`: Release year
-- `genres`: List of genres
-- `similarity_score`: How similar this item is (higher is more similar)
-- `similarity_reason`: Why this item is similar
-
-**Examples:**
-
-Find content similar to Breaking Bad:
-```yaml
-service: stremio.get_similar_content
-data:
-  media_id: "tt0903747"
-  limit: 10
-```
-
-Find content similar to The Dark Knight:
-```yaml
-service: stremio.get_similar_content
-data:
-  media_id: "tt0468569"
-  limit: 5
-```
-
-## Service Automation Examples
-
-See [automations.md](guides/automations.md) for complete automation examples.
+For account-changing actions set `config_entry_id` when more than one account is configured. Card routing does not guarantee that inherited read/playback services are account-selectable. See [watch management](watch-management.md) and [Title Info](title-info.md) for precise semantics and additional examples.
