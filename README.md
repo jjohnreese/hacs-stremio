@@ -1,18 +1,126 @@
 # Stremio Cinema for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-custom-41BDF5)](https://www.hacs.xyz/docs/faq/custom_repositories/)
-[![Version](https://img.shields.io/badge/version-0.6.0-9b6aff)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-9b6aff)](https://github.com/jjohnreese/hacs-stremio/releases/tag/v0.6.0)
 [![Home Assistant](https://img.shields.io/badge/Home_Assistant-custom_integration-18BCF2)](https://www.home-assistant.io/)
+[![Offline checks](https://github.com/jjohnreese/hacs-stremio/actions/workflows/cinema-regressions.yml/badge.svg)](https://github.com/jjohnreese/hacs-stremio/actions/workflows/cinema-regressions.yml)
 
 **Browse. Discover. Organize. Pick up where you left off.**
 
-A Home Assistant custom integration with a Cinema dashboard for your Stremio library, public movie and series catalogs, recommendations, stream selection, and episode-aware watch management. This community fork builds on [tamaygz/hacs-stremio](https://github.com/tamaygz/hacs-stremio).
+Bring your Stremio library into Home Assistant with a Cinema dashboard, movie and series discovery, public title information, recommendations, and episode-aware watch management.
 
-The Cinema example enables **management mode**: inspect streams and copy links, manage library membership and watch status, and explore title information. Existing playback cards, media-source browsing, and optional Apple TV handover remain available outside management mode. This is an integration installed under `custom_components/stremio`, rather than a Home Assistant app/add-on.
+[See examples](#see-it-in-action) · [Copy a dashboard](#try-a-dashboard) · [Install](#installation) · [Card options](docs/ui.md) · [All 17 actions](docs/services.md)
 
-[Install](#installation) · [Build the dashboard](#your-cinema-dashboard) · [Cards](docs/ui.md) · [Actions](docs/services.md) · [Watch management](docs/watch-management.md) · [Validation](docs/validation.md)
+## See it in action
+
+**Explore movies and series, switch Popular/New feeds, and sort loaded titles by IMDb.**
+
+![Live desktop catalog cards: IMDb sorting and current-year series discovery](docs/screenshots/cinema-desktop-catalogs.jpg)
+
+### Get to know a title
+
+Series open their details on the **first click**. Choose **Title Info** immediately; choose an episode when you want episode-specific watch actions or streams.
+
+| Title Info · live | First-click series menu · live |
+| --- | --- |
+| ![Public Cinemeta title information](docs/screenshots/cinema-title-info.jpg) | ![Series menu with Title Info before selecting an episode](docs/screenshots/cinema-series-first-click.jpg) |
+
+| Search the public catalog · live | Choose a season and episode · live |
+| --- | --- |
+| ![Public movie catalog search](docs/screenshots/cinema-search.jpg) | ![Public season and episode picker](docs/screenshots/cinema-episodes.jpg) |
+
+### Comfortable on a phone
+
+Two poster columns, larger carousel items, wrapped titles, and touch-sized filters and actions. Your configured desktop columns remain available on larger screens.
+
+| Discovery · demo | Library · demo | Continue Watching · demo |
+| --- | --- | --- |
+| ![Actual browse card in a 390-pixel demonstration frame](docs/screenshots/cinema-demo-mobile-catalog.jpg) | ![Actual library card with two poster columns and fictional progress](docs/screenshots/cinema-demo-mobile-library.jpg) | ![Actual Continue Watching card with fictional resume progress](docs/screenshots/cinema-demo-mobile-resume.jpg) |
+
+*Phone examples render the actual cards in a 390-pixel frame. Library contents, counts, and progress are fictional. This is a browser layout demonstration, not a screenshot from a mobile Home Assistant app.*
+
+<details>
+<summary><strong>More examples: library, recommendations, watch management, streams, and player</strong></summary>
+
+**Continue Watching and recommendations · demonstration data**
+
+![Actual cards with fictional resume progress and recommendation results](docs/screenshots/cinema-demo-overview.jpg)
+
+**Searchable library and the inherited player card · demonstration data**
+
+![Actual library and player cards with fictional account state](docs/screenshots/cinema-demo-library-player.jpg)
+
+**Watch and library management · demonstration data**
+
+Mark watched/unwatched, clear resume progress separately, and manage membership. For series, watch actions apply to the selected episode.
+
+![Actual management menu with fictional membership and progress](docs/screenshots/cinema-demo-management.jpg)
+
+| Inspect and copy streams · demo | Find Similar · demo |
+| --- | --- |
+| ![Actual stream dialog with fictional sources and example URLs](docs/screenshots/cinema-demo-streams.jpg) | ![Actual similar-content view with demonstration results](docs/screenshots/cinema-demo-similar.jpg) |
+
+The stream examples use fictional URLs. Actual sources and device playback depend on your Stremio add-ons and devices. Management mode hides launch/forward controls; the inherited player, standalone Media Details card, media browser, and optional Apple TV features remain available separately.
+
+</details>
+
+Live screenshots above were captured after installing **0.6.0**, cropped to Stremio cards/dialogs, and reviewed individually. The [visual guide](docs/screenshots/README.md) records which views are live, which use demonstration data, and what remains untested.
+
+## Try a dashboard
+
+For the complete Cinema layout with its hero, statistics, discovery, recommendations, library, and refresh footer, start with the **[full dashboard YAML](examples/stremio-cinema-dashboard.yaml)** and follow [the setup steps](#your-cinema-dashboard).
+
+<details>
+<summary><strong>Copy a simpler three-card dashboard</strong></summary>
+
+Install and configure the integration first. This starter uses only the bundled Stremio cards. Replace the three example entity IDs everywhere they appear with your own media player, Library Count sensor, and Continue Watching Count sensor. Paste into a new dashboard's Raw configuration editor; for an existing dashboard, append only the view to its current `views:` list.
+
+```yaml
+views:
+  - title: Stremio Cinema
+    path: stremio
+    icon: mdi:movie-open
+    cards:
+      - type: custom:stremio-continue-watching-card
+        title: Pick up where you left off
+        entity: sensor.stremio_account_continue_watching_count
+        library_entity: sensor.stremio_account_library_count
+        management_mode: true
+        horizontal_scroll: true
+        tap_action: details
+      - type: custom:stremio-browse-card
+        title: Discover movies
+        entity: media_player.stremio_account_stremio
+        library_entity: sensor.stremio_account_library_count
+        management_mode: true
+        default_type: movie
+        default_view: popular
+        show_rating: true
+        show_sort_controls: true
+        show_load_more: true
+        columns: 4
+        max_items: 24
+        card_height: 640
+        tap_action: details
+      - type: custom:stremio-library-card
+        title: The collection
+        entity: sensor.stremio_account_library_count
+        library_entity: sensor.stremio_account_library_count
+        management_mode: true
+        columns: 4
+        max_items: 120
+        card_height: 640
+        tap_action: show_detail
+```
+
+For a series catalog, change `default_type: movie` to `series`; use `default_view: new` for the current-year feed. Add `config_entry_id` to each management card when routing multiple accounts, as explained in the [dashboard guide](docs/dashboard.md).
+
+</details>
 
 ## What you can do
+
+The Cinema example enables **management mode**: inspect and copy stream links, organize your library, and manage watch status. Playback cards, media-source browsing, and optional Apple TV handover remain available outside management mode. This is a Home Assistant **custom integration**, installed under `custom_components/stremio`.
+
 
 | Capability | What it does |
 | --- | --- |
@@ -29,10 +137,6 @@ The Cinema example enables **management mode**: inspect streams and copy links, 
 | Home Assistant | Media player, library/current/last-watched/stream/resume sensors, binary sensors, refresh buttons, and playback/library events for automations. |
 
 New means Cinemeta's **current UTC-year feed**, which can include upcoming releases. It does not mean recently added to your library or new episodes. Load More consumes native provider pages and adds smaller display batches; a sparse filtered page can need another click. IMDb sorting is not a ranking of the entire remote catalog.
-
-## Screenshots
-
-The [visual guide](docs/screenshots/README.md) records the capture plan. Updated live screenshots will be added after this release is installed and checked in Home Assistant. Captures will show the Stremio cards and dialogs, excluding the Home Assistant sidebar and top bar. Private library, history, counts, device names, and entity IDs will be removed or replaced with explicitly labeled demonstration data before publication.
 
 ## Installation
 

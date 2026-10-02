@@ -3,8 +3,9 @@
 - [x] Compare supplied source against upstream; allowlist fifteen implementation files.
 - [x] Prepare fork metadata, current feature docs and account-neutral dashboard.
 - [x] Run regression/static checks and review privacy.
-- [ ] After the user reinstalls 0.6.0, capture/show updated sanitized screenshots and add the final gallery.
-  - User changed the sequence: publish code/docs first, then capture the installed version.
+- [x] Capture/show thirteen distinct privacy-reviewed screenshots after installation; user approved the gallery.
+- [x] Prepare the examples-first README, copyable starter dashboard and live/demo validation notes.
+- [x] Publish the final visual documentation with the reviewed screenshots and examples.
 - [x] Publish reviewed changes and update GitHub About details.
 
 The inherited tracker below records the original upstream development history, not validation of this fork.

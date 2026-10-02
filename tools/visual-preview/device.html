@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stremio Cinema — phone layout demonstration</title>
+<style>
+body { margin:0; background:#100d19; color:#c8a9ff; font:14px Arial,sans-serif; }
+main { margin:20px auto; width:max-content; }
+p { margin:0 0 12px; text-align:center; }
+iframe { display:block; border:1px solid #47345e; border-radius:16px; background:#100d19; }
+</style>
+<main><p id="caption"></p><iframe title="Actual Stremio cards with demonstration data" height="900"></iframe></main>
+<script>
+const requested=Number(new URLSearchParams(location.search).get('width'));
+const width=[320,390,430].includes(requested)?requested:390;
+document.querySelector('iframe').width=width;
+document.querySelector('iframe').src='./index.html';
+document.querySelector('#caption').textContent=`${width}px layout · demonstration data`;
+</script></html>
