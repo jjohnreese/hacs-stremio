@@ -1,3 +1,7 @@
+# Validation for 0.6.2
+
+The installed 0.6.1 screenshot exposed a missing service-contract check: the card requested 100 recommendations while the registered validator and service UI allowed 50. Both now allow 100. Three new tests execute the actual schema assignment using Voluptuous, checking all filters, defaults, rejection outside the bounds, and agreement with service metadata. **37 backend and 23 frontend tests pass (60 total).** Installed validation of 0.6.2 remains pending an update and Home Assistant restart.
+
 # Validation for 0.6.1
 
 The 0.6.1 regressions cover mixed recommendations without library genres, typed series results, library exclusions across catalog pages, Load More order/duplicates/exhaustion, stale filter responses, and media-player title/poster/episode/progress changes while still playing. There are **34 backend** and **23 frontend** offline tests (57 total). Player tests execute the actual properties and update callback with an offline coordinator fixture; they do not simulate the full Home Assistant lifecycle.

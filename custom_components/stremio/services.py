@@ -168,7 +168,7 @@ GET_RECOMMENDATIONS_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_MEDIA_TYPE): vol.In(["movie", "series"]),
         vol.Optional(ATTR_LIMIT, default=20): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=50)  # type: ignore[arg-type]
+            vol.Coerce(int), vol.Range(min=1, max=100)  # type: ignore[arg-type]
         ),
     }
 )
