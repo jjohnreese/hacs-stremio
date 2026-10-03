@@ -2133,20 +2133,21 @@ class StremioClient:
         _LOGGER.debug("Fetching recommendations: type=%s, limit=%d", media_type, limit)
 
         try:
+            if media_type is None:
+                # Build both pools independently: movie-first truncation and the
+                # movie-only popular fallback otherwise starve the series tab.
+                movies = await self.async_get_recommendations("movie", limit)
+                series = await self.async_get_recommendations("series", limit)
+                mixed = []
+                for index in range(max(len(movies), len(series))):
+                    if index < len(movies):
+                        mixed.append(movies[index])
+                    if index < len(series):
+                        mixed.append(series[index])
+                return mixed[:limit]
+
             # Get user's library to analyze preferences
             library = await self.async_get_library()
-
-            if not library:
-                _LOGGER.debug("Library is empty, returning popular content")
-                # Return popular content if library is empty
-                if media_type == "movie":
-                    return await self.async_get_popular_movies(limit=limit)
-                elif media_type == "series":
-                    return await self.async_get_popular_series(limit=limit)
-                else:
-                    movies = await self.async_get_popular_movies(limit=limit // 2)
-                    series = await self.async_get_popular_series(limit=limit // 2)
-                    return movies + series
 
             # Filter library by type if specified
             filtered_library = library
@@ -2180,7 +2181,7 @@ class StremioClient:
                             media_type="movie",
                             catalog_id="top",
                             genre=genre,
-                            limit=limit,
+                            limit=max(limit, 50),
                         )
                         for movie in movies:
                             item_id = movie.get("imdb_id") or movie.get("id")
@@ -2200,7 +2201,7 @@ class StremioClient:
                             media_type="series",
                             catalog_id="top",
                             genre=genre,
-                            limit=limit,
+                            limit=max(limit, 50),
                         )
                         for show in series:
                             item_id = show.get("imdb_id") or show.get("id")
@@ -2227,23 +2228,31 @@ class StremioClient:
             # If not enough recommendations, add some popular content
             if len(recommendations) < limit:
                 try:
-                    popular = await self.async_get_catalog(
-                        media_type=media_type or "movie",
-                        catalog_id="top",
-                        limit=limit - len(recommendations),
-                    )
-                    for item in popular:
-                        item_id = item.get("imdb_id") or item.get("id")
-                        if (
-                            item_id
-                            and item_id not in library_ids
-                            and item_id not in seen_ids
-                        ):
-                            item["recommendation_reason"] = "Popular right now"
-                            recommendations.append(item)
-                            seen_ids.add(item_id)
-                            if len(recommendations) >= limit:
-                                break
+                    # Excluding library titles can drain the first page. Fetch
+                    # bounded native pages instead of cutting before exclusion.
+                    for skip in range(0, max(limit, 50) * 3, 50):
+                        popular = await self.async_get_catalog(
+                            media_type=media_type,
+                            catalog_id="top",
+                            skip=skip,
+                            limit=50,
+                        )
+                        if not popular:
+                            break
+                        for item in popular:
+                            item_id = item.get("imdb_id") or item.get("id")
+                            if (
+                                item_id
+                                and item_id not in library_ids
+                                and item_id not in seen_ids
+                            ):
+                                item["recommendation_reason"] = "Popular right now"
+                                recommendations.append(item)
+                                seen_ids.add(item_id)
+                                if len(recommendations) >= limit:
+                                    break
+                        if len(recommendations) >= limit:
+                            break
                 except Exception as err:
                     _LOGGER.debug("Error fetching popular content: %s", err)
 

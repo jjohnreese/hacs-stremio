@@ -1,4 +1,10 @@
-# Validation for 0.6.0
+# Validation for 0.6.1
+
+The 0.6.1 regressions cover mixed recommendations without library genres, typed series results, library exclusions across catalog pages, Load More order/duplicates/exhaustion, stale filter responses, and media-player title/poster/episode/progress changes while still playing. There are **34 backend** and **23 frontend** offline tests (57 total). Player tests execute the actual properties and update callback with an offline coordinator fixture; they do not simulate the full Home Assistant lifecycle.
+
+A read-only live comparison established that the old mixed recommendation request returned only movies, while a series-specific request returned shows. The current-watching sensor was also newer than the media-player title and poster. Live verification of the installed 0.6.1 fixes follows updating Home Assistant; the previous screenshots show 0.6.0.
+
+## Previous 0.6.0 validation
 
 ## Completed locally
 

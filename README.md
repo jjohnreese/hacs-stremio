@@ -9,6 +9,8 @@
 
 Bring your Stremio library into Home Assistant with a Cinema dashboard, movie and series discovery, public title information, recommendations, and episode-aware watch management.
 
+**New in 0.6.1:** Top Picks requests movies and TV shows separately, mixes both in All, and includes **Load More**. It reveals a buffered pool of up to 100 recommendations in the configured `max_items` batches. The Now Watching media-player title and poster also update when you switch titles or episodes without changing playback state. [Release details](CHANGELOG.md).
+
 [See examples](#see-it-in-action) · [Copy a dashboard](#try-a-dashboard) · [Install](#installation) · [Card options](docs/ui.md) · [All 17 actions](docs/services.md)
 
 ## See it in action

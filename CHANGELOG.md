@@ -1,3 +1,12 @@
+# Fork release 0.6.1 — 2026-10-03
+
+- Fix Top Picks TV Series filtering by requesting recommendations for the selected media type. All now interleaves movies and shows, including the popular fallback when library genre metadata is absent.
+- Add Load More to Top Picks. The card buffers up to 100 recommendations per selected filter and reveals them in `max_items` batches, preserving order and removing duplicates.
+- Fetch additional popular catalog pages when library exclusions drain the first page, and replace the misleading "add more items" empty message.
+- Ignore stale recommendation responses after a filter change, including a return to the cached All tab.
+- Keep the media-player title, poster, episode and progress synchronized with coordinator data even while its state remains playing. Identical polling results do not trigger a state write.
+- Add 14 regression tests. No personal account, library, entity or dashboard data is included in fixtures.
+
 # Fork release 0.6.0 — 2026-10-02
 
 

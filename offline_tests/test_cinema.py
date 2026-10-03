@@ -224,6 +224,52 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         session = Session(data, status)
         return Client("test@example.com", "fictional", session), session
 
+    def recommendation_client(self, library):
+        client, _ = self.client({})
+        client.async_get_library = AsyncMock(return_value=library)
+
+        async def catalog(media_type, catalog_id, skip=0, limit=50, **kwargs):
+            if skip >= 200:
+                return []
+            return [
+                {"id": f"{media_type}-{i}", "type": media_type, "title": f"Demo {i}"}
+                for i in range(skip, skip + min(limit, 50))
+            ]
+
+        client.async_get_catalog = AsyncMock(side_effect=catalog)
+        return client
+
+    async def test_mixed_recommendations_include_series_without_library_genres(self):
+        client = self.recommendation_client([{"id": "library", "type": "series"}])
+        items = await client.async_get_recommendations(limit=6)
+        self.assertEqual([x["type"] for x in items], ["movie", "series"] * 3)
+
+    async def test_mixed_genre_recommendations_are_not_movie_first_truncated(self):
+        client = self.recommendation_client(
+            [{"id": "library", "type": "movie", "genres": ["Drama"]}]
+        )
+        items = await client.async_get_recommendations(limit=5)
+        self.assertEqual(
+            [x["type"] for x in items], ["movie", "series", "movie", "series", "movie"]
+        )
+
+    async def test_typed_recommendations_fill_after_excluding_library(self):
+        library = [{"id": f"series-{i}", "type": "series"} for i in range(50)]
+        client = self.recommendation_client(library)
+        items = await client.async_get_recommendations("series", limit=100)
+        self.assertEqual(len(items), 100)
+        self.assertTrue(all(x["type"] == "series" for x in items))
+        self.assertEqual(items[0]["id"], "series-50")
+        self.assertEqual(len({x["id"] for x in items}), 100)
+        self.assertEqual(
+            [x.kwargs["skip"] for x in client.async_get_catalog.call_args_list],
+            [0, 50, 100],
+        )
+
+    async def test_empty_library_still_gets_a_mixed_odd_sized_pool(self):
+        items = await self.recommendation_client([]).async_get_recommendations(limit=3)
+        self.assertEqual([x["type"] for x in items], ["movie", "series", "movie"])
+
     async def test_popular_uses_top_and_preserves_score(self):
         client, session = self.client(
             {"metas": [{"id": "tt1375666", "name": "Inception", "imdbRating": "8.8"}]}

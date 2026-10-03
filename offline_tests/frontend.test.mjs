@@ -103,6 +103,56 @@ for (const name of ['stremio-library-card', 'stremio-continue-watching-card', 's
   const code = read(name + '.js').replace(/^import .*;\s*$/gm, '').replace(/const \{ LitElement, html, css \} = await loadCardHelpers\(\);/, '');
   vm.runInContext('{\n' + code + '\n}', context, { filename: name + '.js' });
 }
+
+function recommendationCard() {
+  const c = new (registry.get('stremio-recommendations-card'))();
+  c.setConfig({ max_items: 18 });
+  return c;
+}
+
+test('recommendation filters request their own media type and use the full pool', async () => {
+  const c = recommendationCard(); const calls = [];
+  c._hass = { callWS: async request => {
+    calls.push(request.service_data);
+    return { response: { recommendations: [{ id: request.service_data.media_type || 'mix', type: request.service_data.media_type || 'movie' }] } };
+  } };
+  await c._fetchRecommendations();
+  await c._handleFilterChange('series');
+  assert.equal(calls[0].limit, 100); assert.equal(calls[0].media_type, undefined);
+  assert.equal(calls[1].media_type, 'series'); assert.equal(c._getFilteredItems()[0].type, 'series');
+});
+
+test('recommendation Load More preserves order and stops at exhaustion', async () => {
+  const c = recommendationCard(); let calls = 0;
+  const items = Array.from({ length: 41 }, (_, n) => ({ id: `demo-${n}`, type: 'movie' }));
+  c._hass = { callWS: async () => { calls++; return { response: { recommendations: [...items, items[0]] } }; } };
+  await c._fetchRecommendations();
+  assert.equal(c._getFilteredItems().length, 18); assert.equal(c._hasMoreRecommendations(), true);
+  c._handleLoadMore(); assert.equal(c._getFilteredItems().length, 36);
+  c._handleLoadMore(); assert.equal(c._getFilteredItems().length, 41);
+  assert.deepEqual(Array.from(c._getFilteredItems(), x => x.id), items.map(x => x.id));
+  assert.equal(c._hasMoreRecommendations(), false); assert.equal(calls, 1);
+});
+
+test('a stale movie response cannot replace series or its loading state', async () => {
+  const c = recommendationCard(); let release;
+  c._hass = { callWS: () => new Promise(resolve => { release = resolve; }) };
+  const old = c._handleFilterChange('movie');
+  c._hass = { callWS: async () => ({ response: { recommendations: [{ id: 'demo-series', type: 'series' }] } }) };
+  await c._handleFilterChange('series');
+  release({ response: { recommendations: [{ id: 'old-movie', type: 'movie' }] } }); await old;
+  assert.equal(c._getFilteredItems()[0].id, 'demo-series'); assert.equal(c._loading, false);
+});
+
+test('returning to cached All invalidates a pending filter fetch', async () => {
+  const c = recommendationCard(); let release;
+  c._hass = { callWS: async () => ({ response: { recommendations: [{ id: 'cached', type: 'series' }] } }) };
+  await c._fetchRecommendations();
+  c._hass = { callWS: () => new Promise(resolve => { release = resolve; }) };
+  const old = c._handleFilterChange('movie'); await c._handleFilterChange('all');
+  release({ response: { recommendations: [{ id: 'old', type: 'movie' }] } }); await old;
+  assert.equal(c._getFilteredItems()[0].id, 'cached'); assert.equal(c._loading, false);
+});
 for (const name of ['stremio-browse-card', 'stremio-library-card', 'stremio-continue-watching-card', 'stremio-recommendations-card']) {
   test(name + ': first series click opens details without an episode request', () => {
     const Card = registry.get(name); const c = new Card();

@@ -37,6 +37,7 @@ class StremioRecommendationsCard extends LitElement {
       _loading: { type: Boolean },
       _error: { type: String },
       _lastFetchTime: { type: Number },
+      _visibleCount: { type: Number },
     };
   }
 
@@ -463,6 +464,9 @@ class StremioRecommendationsCard extends LitElement {
     this._loading = false;
     this._error = null;
     this._lastFetchTime = 0;
+    this._lastFetchType = null;
+    this._recommendationRequestId = 0;
+    this._visibleCount = 20;
 
     // Bind methods that are used as event handlers
     this._closeDetail = this._closeDetail.bind(this);
@@ -502,6 +506,7 @@ class StremioRecommendationsCard extends LitElement {
     };
 
     this._filterType = this.config.default_filter;
+    this._visibleCount = this._getBatchSize();
   }
 
   set hass(hass) {
@@ -538,13 +543,19 @@ class StremioRecommendationsCard extends LitElement {
     // Check refresh interval (avoid fetching too frequently)
     const now = Date.now();
     const minInterval = (this.config.refresh_interval || 3600) * 1000;
-    if (this._lastFetchTime && (now - this._lastFetchTime) < minInterval && this._recommendations.length > 0) {
+    const filterType = this._filterType;
+    if (this._lastFetchType === filterType && this._lastFetchTime && (now - this._lastFetchTime) < minInterval && this._recommendations.length > 0) {
+      // Returning to the cached tab also invalidates an in-flight other tab.
+      this._recommendationRequestId++;
+      this._loading = false;
+      this._error = null;
       console.log('[Recommendations Card] Skipping fetch, data is still fresh');
       return;
     }
 
     this._loading = true;
     this._error = null;
+    const requestId = ++this._recommendationRequestId;
 
     try {
       const response = await this._hass.callWS({
@@ -552,12 +563,15 @@ class StremioRecommendationsCard extends LitElement {
         domain: 'stremio',
         service: 'get_recommendations',
         service_data: {
-          limit: this.config.max_items || 20,
+          // Buffer the service's supported 100-title pool; Load More reveals
+          // display batches without reordering the titles already on screen.
+          limit: 100,
+          ...(filterType !== 'all' ? { media_type: filterType } : {}),
         },
         return_response: true,
       });
 
-      console.log('[Recommendations Card] Response:', response);
+      if (requestId !== this._recommendationRequestId) return;
 
       let recommendations = null;
       if (response?.response?.recommendations) {
@@ -567,21 +581,29 @@ class StremioRecommendationsCard extends LitElement {
       }
 
       if (recommendations) {
-        this._recommendations = recommendations;
+        const seen = new Set();
+        this._recommendations = recommendations.filter(item => {
+          const key = `${item.type}:${item.imdb_id || item.id}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
         this._lastFetchTime = now;
+        this._lastFetchType = filterType;
         console.log('[Recommendations Card] Loaded', recommendations.length, 'recommendations');
       } else {
         this._recommendations = [];
       }
     } catch (error) {
+      if (requestId !== this._recommendationRequestId) return;
       console.error('[Recommendations Card] Failed to fetch recommendations:', error);
       this._error = error.message || 'Failed to load recommendations';
     } finally {
-      this._loading = false;
+      if (requestId === this._recommendationRequestId) this._loading = false;
     }
   }
 
-  _getFilteredItems() {
+  _getMatchingItems() {
     let items = [...this._recommendations];
 
     // Apply type filter
@@ -589,11 +611,33 @@ class StremioRecommendationsCard extends LitElement {
       items = items.filter(item => item.type === this._filterType);
     }
 
-    return items.slice(0, this.config.max_items);
+    return items;
+  }
+
+  _getBatchSize() {
+    return Math.max(1, Math.min(100, Number(this.config.max_items) || 20));
+  }
+
+  _getFilteredItems() {
+    return this._getMatchingItems().slice(0, this._visibleCount);
+  }
+
+  _hasMoreRecommendations() {
+    return this._getMatchingItems().length > this._visibleCount;
+  }
+
+  _handleLoadMore() {
+    if (this._loading) return;
+    this._visibleCount = Math.min(
+      this._getMatchingItems().length,
+      this._visibleCount + this._getBatchSize()
+    );
   }
 
   _handleFilterChange(filter) {
     this._filterType = filter;
+    this._visibleCount = this._getBatchSize();
+    return this._fetchRecommendations();
   }
 
   _handleRefresh() {
@@ -876,11 +920,19 @@ class StremioRecommendationsCard extends LitElement {
             >
               ${filteredItems.map(item => this._renderItem(item))}
             </div>
+            ${this._hasMoreRecommendations() ? html`
+              <div style="text-align:center;padding:12px 16px 20px">
+                <button class="retry-btn" @click=${this._handleLoadMore}
+                  aria-label="Load more recommendations" ?disabled=${this._loading}>
+                  Load More
+                </button>
+              </div>
+            ` : ''}
           ` : html`
             <div class="empty-state" role="status">
               <ha-icon icon="mdi:lightbulb-outline"></ha-icon>
               <div>No recommendations available</div>
-              <p>Add more items to your library to get personalized recommendations.</p>
+              <p>No matching titles were returned. Try another filter or refresh.</p>
             </div>
           `}
         </ha-card>
