@@ -134,6 +134,21 @@ test('recommendation Load More preserves order and stops at exhaustion', async (
   assert.equal(c._hasMoreRecommendations(), false); assert.equal(calls, 1);
 });
 
+test('Load More alone permits a render for every recommendation filter', () => {
+  for (const type of ['all', 'movie', 'series']) {
+    const c = recommendationCard();
+    c._filterType = type;
+    c._recommendations = Array.from({ length: 41 }, (_, n) => ({
+      id: `demo-${n}`, type: type === 'series' ? 'series' : 'movie',
+    }));
+    const previous = c._visibleCount;
+    c._handleLoadMore();
+    assert.equal(c._getFilteredItems().length, 36);
+    assert.equal(c.shouldUpdate(new Map([['_visibleCount', previous]])), true);
+    assert.equal(c.shouldUpdate(new Map([['hass', {}]])), false);
+  }
+});
+
 test('a stale movie response cannot replace series or its loading state', async () => {
   const c = recommendationCard(); let release;
   c._hass = { callWS: () => new Promise(resolve => { release = resolve; }) };

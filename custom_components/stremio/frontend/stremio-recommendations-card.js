@@ -175,6 +175,35 @@ class StremioRecommendationsCard extends LitElement {
         transform: scale(1.05);
       }
 
+      .load-more-item {
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: var(--primary-text-color);
+        font: inherit;
+        text-align: center;
+        align-self: start;
+      }
+
+      .load-more-poster {
+        background: linear-gradient(145deg, var(--secondary-background-color), var(--card-background-color));
+        box-shadow: inset 0 0 0 1px var(--primary-color);
+      }
+
+      .load-more-content {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        color: var(--primary-color);
+      }
+
+      .load-more-content ha-icon { --mdc-icon-size: 40px; }
+      .load-more-content span { font-size: 14px; font-weight: 600; }
+
       .item:focus {
         outline: 2px solid var(--primary-color);
         outline-offset: 2px;
@@ -531,6 +560,7 @@ class StremioRecommendationsCard extends LitElement {
     if (changedProps.has('_filterType')) return true;
     if (changedProps.has('_loading')) return true;
     if (changedProps.has('_error')) return true;
+    if (changedProps.has('_visibleCount')) return true;
     return false;
   }
 
@@ -919,15 +949,19 @@ class StremioRecommendationsCard extends LitElement {
               style="${gridStyle}"
             >
               ${filteredItems.map(item => this._renderItem(item))}
-            </div>
-            ${this._hasMoreRecommendations() ? html`
-              <div style="text-align:center;padding:12px 16px 20px">
-                <button class="retry-btn" @click=${this._handleLoadMore}
-                  aria-label="Load more recommendations" ?disabled=${this._loading}>
-                  Load More
+              ${this._hasMoreRecommendations() ? html`
+                <button class="item load-more-item" type="button"
+                  @click=${this._handleLoadMore} aria-label="Load more recommendations"
+                  ?disabled=${this._loading}>
+                  <div class="item-poster-container load-more-poster">
+                    <div class="load-more-content">
+                      <ha-icon icon="mdi:plus-circle-outline" aria-hidden="true"></ha-icon>
+                      <span>Load more</span>
+                    </div>
+                  </div>
                 </button>
-              </div>
-            ` : ''}
+              ` : ''}
+            </div>
           ` : html`
             <div class="empty-state" role="status">
               <ha-icon icon="mdi:lightbulb-outline"></ha-icon>

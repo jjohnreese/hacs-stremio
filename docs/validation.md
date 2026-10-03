@@ -1,3 +1,7 @@
+# Validation for 0.6.3
+
+A read-only live dashboard test reproduced Load More leaving 18 posters displayed. Refreshing the recommendation card revealed the previously advanced batch, confirming that its render filter rejected visible-count changes. The filter now permits them. A new regression covers All, Movies and TV Series and retains the optimization for unrelated Home Assistant changes. **37 backend and 24 frontend tests pass (61 total).** The updated actual card also passed a browser preview check: keyboard Enter and a phone-width tap each expanded three posters to six immediately, with the tile disappearing at exhaustion. At 390 pixels the tile matched the poster width (approximately 155 pixels). These checks use fictional data; live installation of 0.6.3 remains pending an update.
+
 # Validation for 0.6.2
 
 The installed 0.6.1 screenshot exposed a missing service-contract check: the card requested 100 recommendations while the registered validator and service UI allowed 50. Both now allow 100. Three new tests execute the actual schema assignment using Voluptuous, checking all filters, defaults, rejection outside the bounds, and agreement with service metadata. **37 backend and 23 frontend tests pass (60 total).** Installed validation of 0.6.2 remains pending an update and Home Assistant restart.

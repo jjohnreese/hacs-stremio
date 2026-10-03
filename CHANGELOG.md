@@ -1,3 +1,9 @@
+# Fork release 0.6.3 — 2026-10-03
+
+- Fix Picked for you Load More updating its internal batch count without rendering additional posters. The render filter now accepts visible-count changes.
+- Replace the bottom Load More button with a matching poster tile at the end of the carousel or grid, with native keyboard and touch access.
+- Add a render-gate regression for All, Movies and TV Series.
+
 # Fork release 0.6.2 — 2026-10-03
 
 

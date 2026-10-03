@@ -17,7 +17,7 @@ import './stremio-episode-picker.js?v=0.6.0';
 import './stremio-library-card.js?v=0.6.0';
 import './stremio-media-details-card.js?v=0.6.0';
 import './stremio-player-card.js?v=0.6.0';
-import './stremio-recommendations-card.js?v=0.6.2';
+import './stremio-recommendations-card.js?v=0.6.3';
 import './stremio-stream-dialog.js?v=0.6.0';
 
 // Get version from URL query param (set by backend from manifest.json)

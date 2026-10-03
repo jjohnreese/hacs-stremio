@@ -34,7 +34,7 @@ const hass={states:{[library]:{state:'8',attributes:{friendly_name:'Demo Library
 }};
 function add(type,config,full=false){const card=document.createElement(type);card.setConfig({management_mode:true,library_entity:library,...config});card.hass=hass;if(full)card.classList.add('full');document.querySelector('#cards').append(card);}
 add('stremio-continue-watching-card',{title:'Continue Watching · demo',entity:resume,columns:6,max_items:8,horizontal_scroll:true,card_height:300,tap_action:'details'},true);
-add('stremio-recommendations-card',{title:'Recommendations · demo',max_items:6,columns:6,horizontal_scroll:true,card_height:290,tap_action:'details'},true);
+add('stremio-recommendations-card',{title:'Recommendations · demo',max_items:3,columns:4,horizontal_scroll:true,card_height:290,tap_action:'details'},true);
 add('stremio-browse-card',{title:'Discover movies',entity:player,default_type:'movie',default_view:'popular',max_items:24,columns:3,card_height:660});
 add('stremio-browse-card',{title:'Discover series',entity:player,default_type:'series',default_view:'popular',max_items:24,columns:2,card_height:660});
 add('stremio-library-card',{title:'My Library · demo',entity:library,max_items:8,columns:4,card_height:540,tap_action:'show_detail'},true);
